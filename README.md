@@ -1,9 +1,10 @@
+
 # SSCred
 
 A python library to facilitate anonymous authentication. SSCred providers following primitives:
 
-* Anonymous credential light [^cn1]
-* Abe's Blind signature [^cn2]
+* Anonymous credential light<sup>[1](#cn1)</sup>
+* Abe's Blind signature<sup>[2](#cn2)</sup>
 * Blinded Pedersen commitment
 
 ## Install
@@ -31,7 +32,7 @@ pytest
 
 ##  Usage
 ### ACL
-Provides an one-time use anonymous credential based on ACL[^cn1]. The user determines a list of attributes and a message and engages in an interactive protocol with the signer. The signer cannot observe the content of attributes or the message. At the end of the protocol, the user receives a credential with signer's signature. 
+Provides an one-time use anonymous credential based on ACL<sup>[1](#cn1)</sup>. The user determines a list of attributes and a message and engages in an interactive protocol with the signer. The signer cannot observe the content of attributes or the message. At the end of the protocol, the user receives a credential with signer's signature. 
 This credential is verifiable with signer's public key and no one, including the signer, can link it to the user's identity. However, the user cannot use this credential more than once without linking credential uses. In other words, if the user uses the credential more than once, then the credential becomes a pseudo-identity for the user. The library raises an exception if the user tries to use a credential more than once.
 The user can embed a public key in attributes to be able to sign with the credential after receiving it.
 
@@ -61,7 +62,7 @@ b'Hello world'
 ```
 
 ### Blind signature
-The user decides on a message and engages in an interactive protocol with the signer to receive signer's signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows signer's public key. When the user decides to reveal the signature, no one, including the signer, can determine the user's identity. This signature is based on Abe's blind signature[^cn2].
+The user decides on a message and engages in an interactive protocol with the signer to receive signer's signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows signer's public key. When the user decides to reveal the signature, no one, including the signer, can determine the user's identity. This signature is based on Abe's blind signature<sup>[2](#cn2)</sup>.
 
   How to use:
 ```python
@@ -101,5 +102,5 @@ Allows a party to prove the knowledge of a commitment without revealing any info
 
 
 ## Reference
-[^cn1]: Baldimtsi, F., & Lysyanskaya, A. (2013). Anonymous credentials light, 1087–1098. https://doi.org/10.1145/2508859.2516687
-[^cn2]: Abe, M. A Secure Three-move Blind Signature Scheme for Polynomially Many Signatures.
+<a id="cn1">1</a>: Baldimtsi, F., & Lysyanskaya, A. (2013). Anonymous credentials light, 1087–1098. https://doi.org/10.1145/2508859.2516687
+<a id="cn2">2</a>: Abe, M. A Secure Three-move Blind Signature Scheme for Polynomially Many Signatures.
