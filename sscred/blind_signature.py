@@ -227,8 +227,8 @@ class AbeUser(object):
 	def __init__(self, public):
 		self.param = public.param
 		self.public = public
-		if not self.param.verify_parameters(public):
-			raise Exception("Invalid public key")
+		# if not self.param.verify_parameters(public):
+		# 	raise Exception("Invalid public key")
 
 	# duplicate of Abe.Signer.compute_z1
 	def compute_z1(self, rnd):
