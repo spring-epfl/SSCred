@@ -16,16 +16,19 @@ if __name__ == '__main__':
 
     process_times = json.loads(content)
 
-    pfmt = "{:<30} {:<30} {:<30} {:<30}"
+    pfmt_title = "{:<30} {:>20} {:>20} {:>20}"
+    pfmt = "{:<30} {:20.3f} {:20.3f} {:20.3f}"
 
-    title = pfmt.format('FUNCTION', 'MEAN', 'MEDIAN', 'STDDEV')
+    title = pfmt_title.format('FUNCTION', 'MEAN', 'MEDIAN', 'STDDEV')
     print(title)
     print('-' * len(title))
 
+    ms_scale = 1000
+
     for k, v in process_times.items():
-        mean = statistics.mean(v)
-        median = statistics.median(v)
-        stdev = statistics.pstdev(v)
+        mean = ms_scale * statistics.mean(v)
+        median = ms_scale * statistics.median(v)
+        stdev = ms_scale * statistics.pstdev(v)
 
         print(pfmt.format(k, mean, median, stdev))
 

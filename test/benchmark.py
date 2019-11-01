@@ -215,9 +215,9 @@ class ACLBenchmark:
 
 
 if __name__ == '__main__':
-    Benchmark = AbeBenchmark
+    Benchmarks = [ACLBenchmark, AbeBenchmark]
 
-    if Benchmark:
+    for Benchmark in Benchmarks:
         benchmark = Benchmark()
         gc.disable()
         benchmark.run()
