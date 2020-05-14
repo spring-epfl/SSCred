@@ -20,6 +20,8 @@ from sscred.blind_signature import (
     AbeUser
 )
 
+from sscred.pack import packb
+
 
 def perf_measure_call(fn, *args, **kwargs):
     "Measure the execution time of a function."
@@ -69,6 +71,9 @@ class AbeBenchmark:
         random.seed(42)
 
         for _ in range(self.n_repetitions):
+            protocol_communication = 0      # in Bytes
+            signature_size = 0              # in Bytes
+
             abe_param, t = perf_measure_call(AbeParam)
             self.t_abe_param_init.append(t)
 
@@ -84,17 +89,21 @@ class AbeBenchmark:
             self.t_abe_user_init.append(t)
 
             com, t = perf_measure_call(signer.commit)
+            protocol_communication += len(packb(com))
             self.t_abe_signer_commit.append(t)
 
             message = ''.join([random.choice(string.printable) for _ in range(100)])
 
             challenge, t = perf_measure_call(user.compute_blind_challenge, com, message)
+            protocol_communication += len(packb(challenge))
             self.t_user_compute_blind_challenge.append(t)
 
             resp, t = perf_measure_call(signer.respond, challenge)
+            protocol_communication += len(packb(resp))
             self.t_signer_respond.append(t)
 
             sig, t = perf_measure_call(user.compute_signature, resp)
+            signature_size = len(packb(resp)) - len(message)
             self.t_user_compute_signature.append(t)
 
             _, t = perf_measure_call(signer_pub.verify_signature, sig)
