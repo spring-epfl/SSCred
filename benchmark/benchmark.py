@@ -10,7 +10,7 @@ import time
 from petlib.bn import Bn
 from sscred.acl import (
     ACLParam,
-    ACLSigner,
+    ACLIssuer,
     ACLUser
 )
 
@@ -67,7 +67,7 @@ class AbeBenchmark:
 
     def run(self):
         "Run a complete encryption and store the execution time of the methods executed."
-
+        size_printed = False
         random.seed(42)
 
         for _ in range(self.n_repetitions):
@@ -103,12 +103,15 @@ class AbeBenchmark:
             self.t_signer_respond.append(t)
 
             sig, t = perf_measure_call(user.compute_signature, resp)
-            signature_size = len(packb(resp)) - len(message)
+            signature_size = len(packb(sig)) - len(message)
             self.t_user_compute_signature.append(t)
 
             _, t = perf_measure_call(signer_pub.verify_signature, sig)
             self.t_signer_pub_verify_signature.append(t)
-
+            
+            if not size_printed:
+                print(f"Abe's signature => size: {signature_size}, communication cost: {protocol_communication}")
+            size_printed = True
 
     def save(self, filename='abe-benchmark.json'):
         "Save the collected data in json format in a file which name is given in argument."
@@ -138,12 +141,12 @@ class ACLBenchmark:
 
         self.t_acl_param_init = list()
         self.t_generate_new_key_pair = list()
-        self.t_acl_signer_init = list()
+        self.t_acl_issuer_init = list()
         self.t_acl_user_init = list()
         self.t_prove_attr_knowledge = list()
-        self.t_signer_commit = list()
+        self.t_issuer_commit = list()
         self.t_user_compute_blind_challenge = list()
-        self.t_signer_respond = list()
+        self.t_issuer_respond = list()
         self.t_user_compute_credential = list()
         self.t_cred_private_show_credential = list()
         self.t_cred_verify_credential = list()
@@ -161,12 +164,12 @@ class ACLBenchmark:
             keys, t = perf_measure_call(acl_param.generate_new_key_pair)
             self.t_generate_new_key_pair.append(t)
 
-            signer_priv, signer_pub = keys
+            issuer_priv, issuer_pub = keys
 
-            signer, t = perf_measure_call(ACLSigner, signer_priv, signer_pub)
-            self.t_acl_signer_init.append(t)
+            issuer, t = perf_measure_call(ACLIssuer, issuer_priv, issuer_pub)
+            self.t_acl_issuer_init.append(t)
 
-            user, t = perf_measure_call(ACLUser, signer_pub)
+            user, t = perf_measure_call(ACLUser, issuer_pub)
             self.t_acl_user_init.append(t)
 
             rnd_attr_num = Bn(random.randint(0, 2**32 - 1))
@@ -182,14 +185,14 @@ class ACLBenchmark:
             m0, t = perf_measure_call(user.prove_attr_knowledge, attrs)
             self.t_prove_attr_knowledge.append(t)
 
-            m1, t = perf_measure_call(signer.commit, m0)
-            self.t_signer_commit.append(t)
+            m1, t = perf_measure_call(issuer.commit, m0)
+            self.t_issuer_commit.append(t)
 
             m2, t = perf_measure_call(user.compute_blind_challenge, m1, message)
             self.t_user_compute_blind_challenge.append(t)
 
-            m3, t = perf_measure_call(signer.respond, m2)
-            self.t_signer_respond.append(t)
+            m3, t = perf_measure_call(issuer.respond, m2)
+            self.t_issuer_respond.append(t)
 
             cred_private, t = perf_measure_call(user.compute_credential, m3)
             self.t_user_compute_credential.append(t)
@@ -197,7 +200,7 @@ class ACLBenchmark:
             cred, t = perf_measure_call(cred_private.show_credential, [True, True, True, False])
             self.t_cred_private_show_credential.append(t)
 
-            _, t = perf_measure_call(cred.verify_credential, signer_pub)
+            _, t = perf_measure_call(cred.verify_credential, issuer_pub)
             self.t_cred_verify_credential.append(t)
 
 
@@ -207,12 +210,12 @@ class ACLBenchmark:
         file_struct = {}
         file_struct['acl_param_init'] = self.t_acl_param_init
         file_struct['generate_new_key_pair'] = self.t_generate_new_key_pair
-        file_struct['acl_signer_init'] = self.t_acl_signer_init
+        file_struct['acl_issuer_init'] = self.t_acl_issuer_init
         file_struct['acl_user_init'] = self.t_acl_user_init
         file_struct['prove_attr_knowledge'] = self.t_prove_attr_knowledge
-        file_struct['signer_commit'] = self.t_signer_commit
+        file_struct['issuer_commit'] = self.t_issuer_commit
         file_struct['user_compute_blind_challenge'] = self.t_user_compute_blind_challenge
-        file_struct['signer_respond'] = self.t_signer_respond
+        file_struct['issuer_respond'] = self.t_issuer_respond
         file_struct['user_compute_credential'] = self.t_user_compute_credential
         file_struct['cred_private_show_credential'] = self.t_cred_private_show_credential
         file_struct['cred_verify_credential'] = self.t_cred_verify_credential
@@ -224,10 +227,11 @@ class ACLBenchmark:
 
 
 if __name__ == '__main__':
-    Benchmarks = [ACLBenchmark, AbeBenchmark]
+    # Benchmarks = [ACLBenchmark, AbeBenchmark]
+    Benchmarks = [ACLBenchmark]
 
     for Benchmark in Benchmarks:
-        benchmark = Benchmark()
+        benchmark = Benchmark(n_repetitions=1000)
         gc.disable()
         benchmark.run()
         gc.enable()

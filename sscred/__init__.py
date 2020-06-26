@@ -1,11 +1,11 @@
-__version__ = "0.0.0"
-__title__ = "sscread"
+__version__ = "0.1.0"
+__title__ = "sscred"
 __author__ = "Kasra EdalatNejad"
-__email__ = "k.edalat@epfl.ch"
-__url__ = ""
-__license__ = "MIT"
-__description__ = "Another Anon. auther: A Python library for anonymous authentication."
-__copyright__ = ""
+__email__ = "kasra.edalat@epfl.ch"
+__url__ = "https://github.com/spring-epfl/SSCred"
+__license__ = "BSD-3-Clause"
+__description__ = "Single Show Credentials: A Python library for anonymous authentication."
+__copyright__ = "2020, Kasra Edalatnejad  (SPRING Lab, EPFL)"
 
 from sscred.commitment import *
 from sscred.acl import *

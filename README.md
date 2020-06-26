@@ -1,4 +1,3 @@
-
 # SSCred
 
 A python library to facilitate anonymous authentication. SSCred providers following primitives:
@@ -7,8 +6,8 @@ A python library to facilitate anonymous authentication. SSCred providers follow
 * Abe's Blind signature<sup>[2](#cn2)</sup>
 * Blinded Pedersen commitment
 
-## Install
-SSCred is dependent on `petlib` library. Before installing `petlib` you need to ensure that `libssl-dev`, `python-dev`, and `libffi-dev` are installed. You can use following commands on Ubuntu/Debian to install them.
+## Requirement
+SSCred depends on the `petlib` library. Before installing the library make sure that  `libssl-dev`, `python-dev`, and `libffi-dev` packages are installed on your machine. You can use following commands on Ubuntu/Debian to install them.
 
 ```
 sudo apt-get install python-dev
@@ -16,53 +15,66 @@ sudo apt-get install libssl-dev
 sudo apt-get install libffi-dev
 ```
 
-**Warning**: SSCred is dependent on the `zksk` library. Currently, this library is private, and you need to install it manually.
-
-Afterward, you can install the package with `pip`.
-
-```
-pip install -e
-```
-
-Test your installation with
+## Installing
+You can use `pip` to install the library.
 
 ```
-pytest
+pip install git+https://github.com/spring-epfl/SSCred
+```
+
+You can use `pytest` to test the installation
+
+```
+python -m pytest
+```
+
+### Development
+If you are interested in contributing to this library, you can clone the code and
+install the library in the development mode.
+
+```
+git clone https://github.com/spring-epfl/SSCred
+cd SSCred
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+python -m pytest
 ```
 
 ##  Usage
 ### ACL
-Provides an one-time use anonymous credential based on ACL<sup>[1](#cn1)</sup>. The user determines a list of attributes and a message and engages in an interactive protocol with the signer. The signer cannot observe the content of attributes or the message. At the end of the protocol, the user receives a credential with signer's signature. 
-This credential is verifiable with signer's public key and no one, including the signer, can link it to the user's identity. However, the user cannot use this credential more than once without linking credential uses. In other words, if the user uses the credential more than once, then the credential becomes a pseudo-identity for the user. The library raises an exception if the user tries to use a credential more than once.
+Provides an one-time-use anonymous credential based on ACL<sup>[1](#cn1)</sup>. The user decides on a list of attributes and a message and engages in an interactive protocol with the issuer. The issuer cannot observe the content of attributes or the message. At the end of the protocol, the user computes a credential. 
+At a later time, users can show the credential to a verifier to authorize their attributes and the message. This credential is publicly verifiable and anyone who knows knows the issuer public key can check it. This credential is not linked to the user identity. However, the user cannot use this credential more than once without linking credential uses. In other words, if the user uses the credential more than once, then the credential becomes a pseudo-identity for the user. The library raises an exception if the user tries to use a credential more than once.
+
 The user can embed a public key in attributes to be able to sign with the credential after receiving it.
 
   How to use:
 ```python
->>> # generating keys and wrappers
->>> signer_priv, signer_pk = ACLParam().generate_new_key_pair()
->>> signer = ACLSigner(signer_priv, signer_pk)
->>> user = ACLUser(signer_pk)
+>>> # generating keys and wrappers 
+>>> issuer_priv, issuer_pk = ACLParam().generate_new_key_pair() 
+>>> issuer = ACLIssuer(issuer_priv, issuer_pk) 
+>>> user = ACLUser(issuer_pk) 
 >>> message = "Hello world"
 
->>> # Interactive signing
->>> attributes = ["Male", 25, "Researcher", "secret"]
+>>> # Issuance
+>>> attributes = [Bn(13), "Hello", "WoRlD", "Hidden"]
 >>> attr_proof = user.prove_attr_knowledge(attributes)
->>> com = signer.commit(attr_proof)
+>>> com = issuer.commit(attr_proof)
 >>> challenge = user.compute_blind_challenge(com, message)
->>> resp = signer.respond(challenge)
+>>> resp = issuer.respond(challenge)
 >>> cred_private = user.compute_credential(resp)
 
 >>> # show credential
 >>> cred = cred_private.show_credential([True, True, True, False])
->>> assert cred.verify_credential(signer_pk)
+>>> assert cred.verify_credential(issuer_pk)
 >>> print(cred.get_message())
 b'Hello world'
 >>> print(cred.get_attributes())
-['Male', 25, 'Researcher', None]
+[13, 'Hello', 'WoRlD', None]
 ```
 
 ### Blind signature
-The user decides on a message and engages in an interactive protocol with the signer to receive signer's signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows signer's public key. When the user decides to reveal the signature, no one, including the signer, can determine the user's identity. This signature is based on Abe's blind signature<sup>[2](#cn2)</sup>.
+The user decides on a message and engages in an interactive protocol with the signer to compute a signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows the signer's public key. No one, including the signer, can determine the user's identity when he reveals his signature. This signature is based on Abe's blind signature<sup>[2](#cn2)</sup>.
 
   How to use:
 ```python
@@ -83,23 +95,31 @@ b'Hello world'
 ```
 
 ### Blinded Pedersen Commitment
-Allows a party to prove the knowledge of a commitment without revealing any information about underlying values or the commitment itself. This primitive is mainly intended as a building block for more complicated primitives rather than direct use. 
+This scheme allows a party to prove the knowledge of a commitment without revealing any information about underlying values or the commitment itself. This primitive is mainly intended as a building block for more complicated primitives rather than direct use. 
 
   How to use:
 ```python
 >>> values = [Bn(123), Bn(456), 'hello', b"world"]
 >>> param = BlindedPedersenParam(hs_size=len(values))
->>> blindness_z_generator = param.group.hash_to_point(b"bl_z")
->>> param.set_blindness_param(blindness_z_generator)
+>>> # reveal nothing
+>>> bcommit, bpriv = param.blind_commit(values)
+>>> bproof = bcommit.prove_values(bpriv)
+>>> assert bcommit.verify_proof(param, bproof)
 >>> # revealing some values
->>> bproof2 = bcommit.prove_attributes(bpriv, reveal_mask=[True, False, True, False])
->>> assert bcommit.verify_proof(bproof2)
->>> print(bproof2.revealed_values)
-[123, None, 'hello', None]
->>> # verifying commit parameters
->>> assert (bcommit.param.verify_parameters(Z=blindness_z_generator))    
+>>> bproof = bcommit.prove_values(bpriv, reveal_mask=[True, False, True, True])
+>>> assert bcommit.verify_proof(param, bproof)
+>>> print(bproof.revealed_values)
+[123, None, 'hello', b'world']  
 ```
 
+## Performance
+### Abe's signature
+We used the `benchmark.py` to evaluate the performance:
+
+| Curve | Key gen (ms) | Signer (ms) | User  (ms) | Verification (ms) | Signature size (B) | Communication (B) |
+|-------|:------------:|:-----------:|:----------:|:-----------------:|:------------------:|:-----------------:|
+| P-224 |         0.84 |        1.13 |       1.63 |              0.68 |                324 |               367 |
+| P-256 |         0.13 |        0.32 |       0.62 |              0.4  |                360 |               413 | 
 
 ## Reference
 <a id="cn1">1</a>: Baldimtsi, F., & Lysyanskaya, A. (2013). Anonymous credentials light, 1087–1098. https://doi.org/10.1145/2508859.2516687

@@ -1,6 +1,6 @@
 """
 An implementation of Pedersen commitment and utility support for using it.
-Features: Commitment, opening, nizk proof of knowledge
+Features: Commitment, opening, nzkp of opening
 
 Example:
 	>>> values = [Bn(2651), Bn(1), Bn(98)]
@@ -9,7 +9,7 @@ Example:
 	>>> valid = pcommit.verify(pparam, prand, values)
 	>>> print(valid)
 	True
-	>>> proof = pcommit.prove_attributes(pparam, prand, values)
+	>>> proof = pcommit.prove_knowledge(pparam, prand, values)
 	>>> valid = pcommit.verify_proof(pparam, proof)
 	>>> print(valid)
 	True
@@ -21,15 +21,13 @@ from hashlib import sha256
 from petlib.ec import EcGroup
 from petlib.bn import Bn
 
-
-def mod_range_check(x, n):
-	return 0 <= x < n
+from sscred.util import mod_range_check, DEFAULT_GROUP_ID
 
 
 class CommitParam(object):
 	""" Common parameters for Pedersen commitment."""
 
-	def __init__(self, group=EcGroup(713), hs_size=0):
+	def __init__(self, group=EcGroup(DEFAULT_GROUP_ID), hs_size=0):
 		""" Return the common parameters for the specified curve.
 
 		Args:
@@ -116,29 +114,22 @@ class PedersenProof(object):
 
 
 class PedersenCommitment(object):
-	"""A Pedersen commitment.
-
-	Attributes:
-		commit (EcPt): commitment's point
-	"""
 
 	def __init__(self, commit):
+		"""A Pedersen commitment.
+
+		Attributes:
+			commit (EcPt): commitment's point
+		"""
 		self.commit = commit
 
-	# @staticmethod
-	# def commit(values):
-	# 	'''Commit to values. values must be petlib Bns
-
-	# 	Args:
-	# 		values (Bn mod q): committed values.
-	# 	'''
-	# 	return CommitParam(hs_size=len(values)).commit(values)
-
 	def verify(self, pparam, prand, values):
-		"""Verify the correctness of a commitment.
+		"""Verify the commitment.
 
 		Args:
+			pparam (CommitPram): prameters
 			prand (PedersenRand): commitment's secret
+			values (Bn[]): commitment's values
 
 		Returns:
 			boolean: pass/fail
@@ -161,7 +152,17 @@ class PedersenCommitment(object):
 		rhs += pparam.group.wsum(values, pparam.HS[:len(values)])
 		return C == rhs
 
-	def prove_attributes(self, pparam, prand, values):
+	def prove_knowledge(self, pparam, prand, values):
+		""" A non-interactive proof of knowledge of opening an commitment.
+
+		Args:
+			pparam (CommitPram): prameters
+			prand (PedersenRand): commitment's secret
+			values (Bn[]): commitment's values
+
+		Returns:
+			(PedersenProof)
+		"""
 		# sigma protocol's commitment phase
 		r_h = pparam.q.random()
 		r_vs = [pparam.q.random() for _ in range(len(values))]

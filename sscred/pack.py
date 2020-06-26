@@ -5,36 +5,21 @@ needs to be imported to access 'to_binary' and 'from_binary' functions.
 Furthermore, 'packb' and 'unpackb' enable serialization of AC and petlib
 classes with msgpack protocol.
 
-example:
-	>>> values = [Bn(123), Bn(456), 'hello', b"world"]
-	>>> param = BlindedPedersenParam(hs_size=len(values))
-	>>> param.set_blindness_param(param.group.hash_to_point(b"bl_z"),
-	...   param.group.hash_to_point(b"bl_g"))
-	>>> bcommit, bpriv = param.blind_commit(values)
-
-	>>> bt = param.to_binary()
-	>>> param_2 = BlindedPedersenParam.from_binary(bt)
-	>>> # param does not support equality
-	>>> assert type(param) == type(param_2)
-	>>> assert param.__dict__ == param_2.__dict__
-
-	>>> bt = packb((bcommit, bpriv))
-	>>> bcommit_2, bpriv_2 = unpackb(bt)
-	>>> # commitment does not support equality
-	>>> assert type(bcommit) == type(bcommit_2)
-	>>> assert bpriv == bpriv_2
+Check example.py for examples
 """
+
 import msgpack
 import petlib.pack
 
 from zksk import Secret
+from zksk.base import NIZK
 
 from sscred.acl import *
 from sscred.commitment import *
 from sscred.blind_pedersen import *
 from sscred.blind_signature import *
 
-
+COUNTER_BASE = 20
 _pack_reg = dict()
 
 
@@ -114,37 +99,42 @@ def add_msgpack_support(cls, ext, add_cls_methods=True):
 	petlib.pack.register_coders(cls, ext, enc, dec)
 
 
+def register_all_classes():
+	# commitment
+	add_msgpack_support(CommitParam, COUNTER_BASE+1)
+	add_msgpack_support(PedersenProof, COUNTER_BASE+2)
+	add_msgpack_support(PedersenCommitment, COUNTER_BASE+3)
+	# blind commitment
+	add_msgpack_support(BlPedersenPrivate, COUNTER_BASE+4)
+	add_msgpack_support(BlPedersenProof, COUNTER_BASE+5)
+	add_msgpack_support(BlindedPedersenParam, COUNTER_BASE+6)
+	add_msgpack_support(BlPedersenCommitment, COUNTER_BASE+7)
+	# Abe's signature
+	add_msgpack_support(AbeParam, COUNTER_BASE+8)
+	add_msgpack_support(AbePublicKey, COUNTER_BASE+9)
+	add_msgpack_support(AbePrivateKey, COUNTER_BASE+10)
+	add_msgpack_support(AbeSignature, COUNTER_BASE+11)
+	add_msgpack_support(SignerCommitMessage, COUNTER_BASE+12)
+	add_msgpack_support(SignerRespondMessage, COUNTER_BASE+13)
+	# ACL
+	add_msgpack_support(ACLParam, COUNTER_BASE+14)
+	add_msgpack_support(ACLIssuerPrivateKey, COUNTER_BASE+15)
+	add_msgpack_support(ACLIssuerPublicKey, COUNTER_BASE+16)
+	add_msgpack_support(ProveAttrKnowledgeMessage, COUNTER_BASE+17)
+	add_msgpack_support(ACLCredential, COUNTER_BASE+18)
+	add_msgpack_support(ACLCredentialPrivate, COUNTER_BASE+19)
+	# zksk
+	add_msgpack_support(Secret, COUNTER_BASE+20, add_cls_methods=False)
+	add_msgpack_support(NIZK, COUNTER_BASE+21, add_cls_methods=False)
+
+
+register_all_classes()
+
+
 def main():
 	import doctest
 	doctest.testmod(verbose=True)
 
-
-# commitment
-add_msgpack_support(CommitParam, 11)
-add_msgpack_support(PedersenProof, 12)
-add_msgpack_support(PedersenCommitment, 13)
-# blind commitment
-add_msgpack_support(BlPedersenPrivate, 14)
-add_msgpack_support(BlPedersenProof, 15)
-add_msgpack_support(BlindedPedersenParam, 16)
-add_msgpack_support(BlPedersenCommitment, 17)
-# Abe's signature
-add_msgpack_support(AbeParam, 18)
-add_msgpack_support(AbePublicKey, 19)
-add_msgpack_support(AbePrivateKey, 20)
-add_msgpack_support(AbeSignature, 21)
-add_msgpack_support(SignerCommitMessage, 22)
-add_msgpack_support(SignerRespondMessage, 23)
-# ACL
-add_msgpack_support(ACLParam, 24)
-add_msgpack_support(ACLSignerPrivateKey, 25)
-add_msgpack_support(ACLSignerPublicKey, 26)
-add_msgpack_support(ProveAttrKnowledgeMessage, 27)
-add_msgpack_support(ACLCredential, 28)
-add_msgpack_support(ACLCredentialPrivate, 29)
-# zksk
-add_msgpack_support(Secret, 30, add_cls_methods=False)
-
-
 if __name__ == '__main__':
 	main()
+	

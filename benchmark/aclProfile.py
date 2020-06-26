@@ -23,22 +23,23 @@ def profile_ACL():
 
     for _ in range(N_REPETITIONS):
         # generating keys and wrappers
-        signer_priv, signer_pub = ACLParam().generate_new_key_pair()
-        signer = ACLSigner(signer_priv, signer_pub)
 
-        user = ACLUser(signer_pub)
-        attrs = [Bn(13), "Hello", "WoRlD", "Hidden"]
-        message = "This isn't a test message."
+        issuer_priv, issuer_pk = ACLParam().generate_new_key_pair()
+        issuer = ACLIssuer(issuer_priv, issuer_pk)
+        user = ACLUser(issuer_pk)
 
-        m0 = user.prove_attr_knowledge(attrs)
-        m1 = signer.commit(m0)
+        # Issuance
+        message = "Hello world"
+        attributes = [Bn(13), "Hello", "WoRlD", "Hidden"]
+        m0 = user.prove_attr_knowledge(attributes)
+        m1 = issuer.commit(m0)
         m2 = user.compute_blind_challenge(m1, message)
-        m3 = signer.respond(m2)
+        m3 = issuer.respond(m2)
         cred_private = user.compute_credential(m3)
 
         # show credential
         cred = cred_private.show_credential([True, True, True, False])
-        cred.verify_credential(signer_pub)
+        assert cred.verify_credential(issuer_pk)
 
     pr.disable()
 
