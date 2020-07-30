@@ -1,3 +1,5 @@
+from petlib.bn import Bn
+
 from sscred.commitment import *
 from sscred.blind_pedersen import *
 from sscred.blind_signature import *

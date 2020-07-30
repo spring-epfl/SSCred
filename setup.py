@@ -8,7 +8,7 @@ from setuptools import setup
 PACKAGE_NAME = "sscred"
 INSTALL_REQUIRES = [
     "petlib", 
-    "zksk @ git+https://github.com/spring-epfl/zksk#egg=zksk"
+    "zksk"
 ]
 SETUP_REQUIRES = ["pytest-runner"]
 TEST_REQUIRES = ["pytest"]

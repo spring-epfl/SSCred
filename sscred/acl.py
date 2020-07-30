@@ -27,11 +27,11 @@ A guide to ACL:
 Steps 2 and 3 can be combined together.
 
 How to use: 
-	>>> # generating keys and wrappers 
-	>>> issuer_priv, issuer_pk = ACLParam().generate_new_key_pair() 
-	>>> issuer = ACLIssuer(issuer_priv, issuer_pk) 
-	>>> user = ACLUser(issuer_pk) 
-	>>> message = "Hello world"
+    >>> # generating keys and wrappers 
+    >>> issuer_priv, issuer_pk = ACLParam().generate_new_key_pair() 
+    >>> issuer = ACLIssuer(issuer_priv, issuer_pk) 
+    >>> user = ACLUser(issuer_pk) 
+    >>> message = "Hello world"
 
     >>> # Issuance
     >>> attributes = [Bn(13), "Hello", "WoRlD", "Hidden"]
@@ -57,259 +57,263 @@ from petlib.bn import Bn
 from sscred.commitment import *
 from sscred.blind_pedersen import *
 from sscred.blind_signature import *
-from sscred.util import mod_range_check, DEFAULT_GROUP_ID
+from sscred.config import DEFAULT_GROUP_ID
 
 
 class ACLParam(AbeParam):
-	"""Param for ACL credential including both AbeParam and
-	BlindedPedersenParam.
-	"""
+    """Param for ACL credential including both AbeParam and
+    BlindedPedersenParam.
+    """
 
-	def __init__(self, group=EcGroup(DEFAULT_GROUP_ID)):
-		super(ACLParam, self).__init__(group)
+    def __init__(self, group=EcGroup(DEFAULT_GROUP_ID)):
+        super(ACLParam, self).__init__(group)
 
-	def generate_new_key_pair(self):
-		sk = self.q.random()
-		private = ACLIssuerPrivateKey(sk)
-		public = ACLIssuerPublicKey(self, private)
-		return private, public
+    def generate_new_key_pair(self):
+        sk = self.q.random()
+        private = ACLIssuerPrivateKey(sk)
+        public = ACLIssuerPublicKey(self, private)
+        return private, public
 
 
 class ACLIssuerPrivateKey(AbePrivateKey):
-	def __init__(self, sk):
-		super(ACLIssuerPrivateKey, self).__init__(sk=sk)
+    def __init__(self, sk):
+        super(ACLIssuerPrivateKey, self).__init__(sk=sk)
 
 
 class ACLIssuerPublicKey(AbePublicKey):
-	def __init__(self, param, private):
-		"""	Use ACLParam.generate_new_key_pair to generate a fresh key pair.
+    def __init__(self, param, private):
+        """	Use ACLParam.generate_new_key_pair to generate a fresh key pair.
 
-		Args:
-			param (ACLParam): parameters
-			priv (ACLIssuerPrivateKey): issuer's private key
-		"""
-		super(ACLIssuerPublicKey, self).__init__(param, private)
-		# Improvement: reusing an existing param for common gens can speed up 
-		# the process.
-		self.bc_param = BlindedPedersenParam(
-			group=param.group, 
-			hs_size=5,
-			Z=self.Z,
-			H_2=self.param.G
-		)
+        Args:
+            param (ACLParam): parameters
+            priv (ACLIssuerPrivateKey): issuer's private key
+        """
+        super(ACLIssuerPublicKey, self).__init__(param, private)
+        # Improvement: reusing an existing param for common gens can speed up 
+        # the process.
+        self.bc_param = BlindedPedersenParam(
+            group=param.group, 
+            hs_size=5,
+            Z=self.Z,
+            H_2=self.param.G
+        )
 
-	def verify_parameters(self, verify_bases=False):
-		"""Verifies that the public key is generated correctly.
-		
-		Args:
-			verify_bases (bool): if true, verifies public parameter's generators G, H
-		"""
-		return self.Z == self.bc_param.Z and \
-			   self.param.G == self.bc_param.H_2 and \
-			   super(ACLIssuerPrivateKey, self).verify_parameters(verify_bases)
+    def verify_parameters(self, verify_bases=False):
+        """Verifies that the public key is generated correctly.
+        
+        Args:
+            verify_bases (bool): if true, verifies public parameter's generators G, H
+        """
+        return self.Z == self.bc_param.Z and \
+               self.param.G == self.bc_param.H_2 and \
+               super(ACLIssuerPrivateKey, self).verify_parameters(verify_bases)
 
 
 @attr.s
 class ProveAttrKnowledgeMessage(object):
-	commit = attr.ib()      # type: PedersenCommitment
-	nizk_proof = attr.ib()  # type: PedersenProof
+    commit = attr.ib()      # type: PedersenCommitment
+    nizk_proof = attr.ib()  # type: PedersenProof
 
 
 ############### Issuer ################
 class ACLIssuer(AbeSigner):
 
-	def __init__(self, private, public):
-		"""A class which handles the issuer role
+    def __init__(self, private, public):
+        """A class which handles the issuer role
 
-		Attributes:
-			private (ACLIssuerPrivateKey): issuer's private key
-			public (ACLIssuerPublicKey): issuer's public key
-		"""
-		self.param = public.param
-		self.public = public
-		self.private = private
+        Attributes:
+            private (ACLIssuerPrivateKey): issuer's private key
+            public (ACLIssuerPublicKey): issuer's public key
+        """
+        self.param = public.param
+        self.public = public
+        self.private = private
 
-	def _compute_z1(self, rnd):
-		return self.user_attr_commitment.commit + rnd * self.param.G
+    def _compute_z1(self, rnd):
+        return self.user_attr_commitment.commit + rnd * self.param.G
 
-	def commit(self, prove_attr_msg):
-		"""Checks the attribute proof and perform AbeSignature's commit phase.
+    def commit(self, prove_attr_msg):
+        """Checks the attribute proof and perform AbeSignature's commit phase.
 
-		Errors:
-			attribute proof is invalid
-		Args:
-			prove_attr_msg (ProveAttrKnowledgeMessage): the user's commitment
-				to his/her values.
-		Returns:
-			(SignerCommitMessage)
-		"""
+        Errors:
+            attribute proof is invalid
+        Args:
+            prove_attr_msg (ProveAttrKnowledgeMessage): the user's commitment
+                to his/her values.
+        Returns:
+            (SignerCommitMessage)
+        """
 
-		valid_commit = prove_attr_msg.commit.verify_proof(
-			pparam = self.public.bc_param,
-			proof = prove_attr_msg.nizk_proof)
-		if not valid_commit:
-			raise Exception("Attribute proof is invalid.")
-		
-		self.user_attr_commitment = prove_attr_msg.commit
-		return super(ACLIssuer, self).commit()
+        valid_commit = prove_attr_msg.commit.verify_proof(
+            pparam = self.public.bc_param,
+            proof = prove_attr_msg.nizk_proof)
+        if not valid_commit:
+            raise Exception("Attribute proof is invalid.")
+        
+        self.user_attr_commitment = prove_attr_msg.commit
+        return super(ACLIssuer, self).commit()
 
 
 class ACLUser(AbeUser):
-	"""An ACL user which receives a credential. 
-	This class stores a state and only supports one credential at a time.
+    """An ACL user which receives a credential. 
+    This class stores a state and only supports one credential at a time.
 
-	Attributes:
-		public (ACLIssuerPublicKey): issuer's public key
-	"""
+    Attributes:
+        public (ACLIssuerPublicKey): issuer's public key
+    """
 
-	def __init__(self, public):
-		self.param = public.param
-		self.public = public
+    def __init__(self, public):
+        self.param = public.param
+        self.public = public
 
-	def _compute_z1(self, rnd):
-		if not isinstance(rnd, Bn) or rnd == 0 or not mod_range_check(rnd, self.param.q):
-			raise Exception("Invalid registration.")
-		return self.user_attr_commitment.commit + rnd * self.param.G
+    def _compute_z1(self, rnd):
+        if not isinstance(rnd, Bn) or rnd == 0 or not (0 <= rnd < self.param.q):
+            raise Exception("Invalid registration.")
+        return self.user_attr_commitment.commit + rnd * self.param.G
 
-	def prove_attr_knowledge(self, attributes):
-		""" Prove the knowledge of attributes to initiate an issuance:
+    def prove_attr_knowledge(self, attributes):
+        """ Prove the knowledge of attributes to initiate an issuance:
 
-		Args:
-			attributes (List[Union[Bn, str, bytes]]): user's attributes
-		
-		Returns:
-			(ProveAttrKnowledgeMessage)
-		"""
-		bc_param =  self.public.bc_param
-		self.attributes = attributes
-	
-		self.pcommit, self.prand = bc_param.commit(attributes)
-		proof = self.pcommit.prove_knowledge(
-			pparam = bc_param,
-			prand = self.prand, 
-			values = bc_param.process_raw_values(attributes)
-		)
-		self.user_attr_commitment = self.pcommit
-		return ProveAttrKnowledgeMessage(commit=self.pcommit, nizk_proof=proof)
+        Args:
+            attributes (List[Union[Bn, str, bytes]]): user's attributes
+        
+        Returns:
+            (ProveAttrKnowledgeMessage)
+        """
+        bc_param =  self.public.bc_param
+        self.attributes = attributes
+    
+        self.pcommit, self.prand = bc_param.commit(attributes)
+        proof = self.pcommit.prove_knowledge(
+            pparam = bc_param,
+            prand = self.prand, 
+            values = bc_param.process_raw_values(attributes)
+        )
+        self.user_attr_commitment = self.pcommit
+        return ProveAttrKnowledgeMessage(commit=self.pcommit, nizk_proof=proof)
 
-	def compute_credential(self, response):
-		"""Finish the protocol and form a private credential.
+    def compute_credential(self, response):
+        """Finish the protocol and form a private credential.
 
-		Args:
-			response (SignerRespondMessage): output of ACLIssuer.respond
+        Args:
+            response (SignerRespondMessage): output of ACLIssuer.respond
 
-		Returns:
-			cred_private (ACLCredentialPrivate): A private credential.
-				cred_private.show_credential() creates a one time use credential
-				with the private information.
-		"""
-		sig = self.compute_signature(response)
-		bcommit, bpriv = self.public.bc_param.blind_commit(
-			raw_values=self.attributes,
-			blindness_rand=self.blinder,
-			h_rand=self.prand
-		)
-		cred_private = ACLCredentialPrivate(
-			signature = sig, 
-			bcommit = bcommit,
-			bpriv = bpriv
-		)
-		return cred_private
+        Returns:
+            cred_private (ACLCredentialPrivate): A private credential.
+                cred_private.show_credential() creates a one time use credential
+                with the private information.
+        """
+        sig = self.compute_signature(response)
+        bcommit, bpriv = self.public.bc_param.blind_commit(
+            raw_values=self.attributes,
+            blindness_rand=self.blinder,
+            h_rand=self.prand
+        )
+        cred_private = ACLCredentialPrivate(
+            signature = sig, 
+            bcommit = bcommit,
+            bpriv = bpriv
+        )
+        return cred_private
 
 
 
 class ACLCredentialPrivate(object):
 
-	def __init__(self, signature, bcommit, bpriv):
-		"""An ACL credential's secret. This object can be used to generate a
-		one-time use credential token
+    def __init__(self, signature, bcommit, bpriv):
+        """An ACL credential's secret. This object can be used to generate a
+        one-time use credential token
 
-		Args:
-			signature (AbeSignature): credential's signature
-			bcommit (BlPedersenCommit): blind commit's public part
-			bpriv (BlPedersenRand): blind commit's randomness
-		"""
-		self.signature = signature
-		self.bcommit = bcommit
-		self.bpriv = bpriv
-		self.revealed = False
+        Args:
+            signature (AbeSignature): credential's signature
+            bcommit (BlPedersenCommit): blind commit's public part
+            bpriv (BlPedersenRand): blind commit's randomness
+        """
+        self.signature = signature
+        self.bcommit = bcommit
+        self.bpriv = bpriv
+        self.revealed = False
 
-	def show_credential(self, revealed_attrs):
-		"""Show the credential and reveal $revealed_attrs attributes.
+    def show_credential(self, revealed_attrs):
+        """Show the credential and reveal $revealed_attrs attributes.
 
-		Error:
-			One time use only
-		Args:
-			revealed_attrs (boolean []): reveals attr[i] iff revealed_attrs[i]
-		Returns:
-			ACLCredential: a credential
-		"""
+        Error:
+            One time use only
+            revealed_attrs should have the same len as attributes.
+        Args:
+            revealed_attrs (boolean []): reveals attr[i] iff revealed_attrs[i]
+        Returns:
+            ACLCredential: a credential
+        """
 
-		if self.revealed:
-			raise Exception("ACL credential is one-time use only. You cannot"
-				" show it twice.")
-		self.revealed = True
-		
-		bproof = self.bcommit.prove_values(self.bpriv, revealed_attrs)
-		cred = ACLCredential(
-			signature = self.signature,
-			bcommit = self.bcommit,
-			bc_proof = bproof
-		)
-		return cred
+        if self.revealed:
+            raise Exception("ACL credential is one-time use only. You cannot"
+                " show it twice.")
+        self.revealed = True
+        if len(revealed_attrs) != len(self.bpriv.values):
+            raise Exception("Revealed_attrs is a binary mask to decide which attrs" +
+                            "should be reveal. It must have the same size as attributes.")
+        
+        bproof = self.bcommit.prove_values(self.bpriv, revealed_attrs)
+        cred = ACLCredential(
+            signature = self.signature,
+            bcommit = self.bcommit,
+            bc_proof = bproof
+        )
+        return cred
 
 
 class ACLCredential(object):
 
-	def __init__(self, signature, bcommit, bc_proof):
-		"""An ACL credential.
-		The issuer's public key is intentionally not bundled in this class to force
-		the verifier to use a known correct issuer's public key.
+    def __init__(self, signature, bcommit, bc_proof):
+        """An ACL credential.
+        The issuer's public key is intentionally not bundled in this class to force
+        the verifier to use a known correct issuer's public key.
 
-		Attributes:
-			signature (AbeSignature): credential's signature
-			bcommit (BlPedersenCommit): blind commit's public part
-			bc_proof (BlPedersenProof): blind commit's proof and attributes
-		"""
-		self.signature = signature
-		self.bcommit = bcommit
-		self.bc_proof = bc_proof
+        Attributes:
+            signature (AbeSignature): credential's signature
+            bcommit (BlPedersenCommit): blind commit's public part
+            bc_proof (BlPedersenProof): blind commit's proof and attributes
+        """
+        self.signature = signature
+        self.bcommit = bcommit
+        self.bc_proof = bc_proof
 
-	def verify_credential(self, issuer_pk):
-		""" verifies the credential. Assumes that issuer_pk and its parameters
-		are verified.
+    def verify_credential(self, issuer_pk):
+        """ verifies the credential. Assumes that issuer_pk and its parameters
+        are verified.
 
-		Args:
-			issuer_pk (ACLIssuerPublicKey): issuer's public key.
-		Returns:
-			boolean: pass/fail
-		"""
-		if not issuer_pk.verify_signature(self.signature):
-			return False
-		if not self.bcommit.verify_proof(issuer_pk.bc_param, self.bc_proof):
-			return False
-		return True
+        Args:
+            issuer_pk (ACLIssuerPublicKey): issuer's public key.
+        Returns:
+            boolean: pass/fail
+        """
+        if not issuer_pk.verify_signature(self.signature):
+            return False
+        if not self.bcommit.verify_proof(issuer_pk.bc_param, self.bc_proof):
+            return False
+        return True
 
-	def get_attributes(self):
-		""" get attributes.
-		Returns:
-			raw_attr []: raw attributes in their original format. None for
-			non-revealed attributes.
-		"""
-		return self.bc_proof.revealed_values
+    def get_attributes(self):
+        """ get attributes.
+        Returns:
+            raw_attr []: raw attributes in their original format. None for
+            non-revealed attributes.
+        """
+        return self.bc_proof.revealed_values
 
-	def get_message(self):
-		""" get message.
-		Returns:
-			bytes: message
-		"""
-		return self.signature.message
+    def get_message(self):
+        """ get message.
+        Returns:
+            bytes: message
+        """
+        return self.signature.message
 
 
 def main():
-	import doctest
-	doctest.testmod(verbose=True)
+    import doctest
+    doctest.testmod(verbose=True)
 
 
 if __name__ == "__main__":
-	main()
+    main()

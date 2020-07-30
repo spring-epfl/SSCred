@@ -14,10 +14,10 @@ import petlib.pack
 from zksk import Secret
 from zksk.base import NIZK
 
-from sscred.acl import *
-from sscred.commitment import *
-from sscred.blind_pedersen import *
-from sscred.blind_signature import *
+import sscred.acl as acl 
+import sscred.commitment as commitment 
+import sscred.blind_pedersen as blind_pedersen 
+import sscred.blind_signature as blind_signature 
 
 COUNTER_BASE = 20
 _pack_reg = dict()
@@ -101,28 +101,28 @@ def add_msgpack_support(cls, ext, add_cls_methods=True):
 
 def register_all_classes():
 	# commitment
-	add_msgpack_support(CommitParam, COUNTER_BASE+1)
-	add_msgpack_support(PedersenProof, COUNTER_BASE+2)
-	add_msgpack_support(PedersenCommitment, COUNTER_BASE+3)
+	add_msgpack_support(commitment.CommitParam, COUNTER_BASE+1)
+	add_msgpack_support(commitment.PedersenProof, COUNTER_BASE+2)
+	add_msgpack_support(commitment.PedersenCommitment, COUNTER_BASE+3)
 	# blind commitment
-	add_msgpack_support(BlPedersenPrivate, COUNTER_BASE+4)
-	add_msgpack_support(BlPedersenProof, COUNTER_BASE+5)
-	add_msgpack_support(BlindedPedersenParam, COUNTER_BASE+6)
-	add_msgpack_support(BlPedersenCommitment, COUNTER_BASE+7)
+	add_msgpack_support(blind_pedersen.BlPedersenPrivate, COUNTER_BASE+4)
+	add_msgpack_support(blind_pedersen.BlPedersenProof, COUNTER_BASE+5)
+	add_msgpack_support(blind_pedersen.BlindedPedersenParam, COUNTER_BASE+6)
+	add_msgpack_support(blind_pedersen.BlPedersenCommitment, COUNTER_BASE+7)
 	# Abe's signature
-	add_msgpack_support(AbeParam, COUNTER_BASE+8)
-	add_msgpack_support(AbePublicKey, COUNTER_BASE+9)
-	add_msgpack_support(AbePrivateKey, COUNTER_BASE+10)
-	add_msgpack_support(AbeSignature, COUNTER_BASE+11)
-	add_msgpack_support(SignerCommitMessage, COUNTER_BASE+12)
-	add_msgpack_support(SignerRespondMessage, COUNTER_BASE+13)
+	add_msgpack_support(blind_signature.AbeParam, COUNTER_BASE+8)
+	add_msgpack_support(blind_signature.AbePublicKey, COUNTER_BASE+9)
+	add_msgpack_support(blind_signature.AbePrivateKey, COUNTER_BASE+10)
+	add_msgpack_support(blind_signature.AbeSignature, COUNTER_BASE+11)
+	add_msgpack_support(blind_signature.SignerCommitMessage, COUNTER_BASE+12)
+	add_msgpack_support(blind_signature.SignerRespondMessage, COUNTER_BASE+13)
 	# ACL
-	add_msgpack_support(ACLParam, COUNTER_BASE+14)
-	add_msgpack_support(ACLIssuerPrivateKey, COUNTER_BASE+15)
-	add_msgpack_support(ACLIssuerPublicKey, COUNTER_BASE+16)
-	add_msgpack_support(ProveAttrKnowledgeMessage, COUNTER_BASE+17)
-	add_msgpack_support(ACLCredential, COUNTER_BASE+18)
-	add_msgpack_support(ACLCredentialPrivate, COUNTER_BASE+19)
+	add_msgpack_support(acl.ACLParam, COUNTER_BASE+14)
+	add_msgpack_support(acl.ACLIssuerPrivateKey, COUNTER_BASE+15)
+	add_msgpack_support(acl.ACLIssuerPublicKey, COUNTER_BASE+16)
+	add_msgpack_support(acl.ProveAttrKnowledgeMessage, COUNTER_BASE+17)
+	add_msgpack_support(acl.ACLCredential, COUNTER_BASE+18)
+	add_msgpack_support(acl.ACLCredentialPrivate, COUNTER_BASE+19)
 	# zksk
 	add_msgpack_support(Secret, COUNTER_BASE+20, add_cls_methods=False)
 	add_msgpack_support(NIZK, COUNTER_BASE+21, add_cls_methods=False)

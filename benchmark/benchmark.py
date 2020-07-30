@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"Benchmark generation for SSCred ACL submodule."
+"Benchmark generation for SSCred ACL and Abe's blind signature submodules."
 
 import gc
 import json
@@ -7,6 +7,7 @@ import random
 import string
 import time
 
+from petlib.ec import EcGroup
 from petlib.bn import Bn
 from sscred.acl import (
     ACLParam,
@@ -21,6 +22,7 @@ from sscred.blind_signature import (
 )
 
 from sscred.pack import packb
+from sscred.config import DEFAULT_GROUP_ID
 
 
 def perf_measure_call(fn, *args, **kwargs):
@@ -49,7 +51,7 @@ def perf_measure_call(fn, *args, **kwargs):
 
 
 class AbeBenchmark:
-    "Contains the benchmark data for the ACL module."
+    "Contains the benchmark data for the Abe's blind signature."
 
     def __init__(self, n_repetitions=1000):
         self.n_repetitions = n_repetitions
@@ -66,7 +68,7 @@ class AbeBenchmark:
 
 
     def run(self):
-        "Run a complete encryption and store the execution time of the methods executed."
+        "Run an issuance and store the execution time of the methods executed."
         size_printed = False
         random.seed(42)
 
@@ -103,6 +105,7 @@ class AbeBenchmark:
             self.t_signer_respond.append(t)
 
             sig, t = perf_measure_call(user.compute_signature, resp)
+            # The signature stores the message. This size is dependent on the user's input.
             signature_size = len(packb(sig)) - len(message)
             self.t_user_compute_signature.append(t)
 
@@ -111,7 +114,7 @@ class AbeBenchmark:
             
             if not size_printed:
                 print(f"Abe's signature => size: {signature_size}, communication cost: {protocol_communication}")
-            size_printed = True
+                size_printed = True
 
     def save(self, filename='abe-benchmark.json'):
         "Save the collected data in json format in a file which name is given in argument."
@@ -153,11 +156,14 @@ class ACLBenchmark:
 
 
     def run(self):
-        "Run a complete encryption and store the execution time of the methods executed."
-
+        "Run an issuance and store the execution time of the methods executed."
+        size_printed = False
         random.seed(42)
 
         for _ in range(self.n_repetitions):
+            protocol_communication = 0      # in Bytes
+            credential_size = 0             # in Bytes
+            
             acl_param, t = perf_measure_call(ACLParam)
             self.t_acl_param_init.append(t)
 
@@ -183,25 +189,35 @@ class ACLBenchmark:
             message = ''.join([random.choice(string.printable) for _ in range(64)])
 
             m0, t = perf_measure_call(user.prove_attr_knowledge, attrs)
+            protocol_communication += len(packb(m0))
             self.t_prove_attr_knowledge.append(t)
 
             m1, t = perf_measure_call(issuer.commit, m0)
+            protocol_communication += len(packb(m1))
             self.t_issuer_commit.append(t)
 
             m2, t = perf_measure_call(user.compute_blind_challenge, m1, message)
+            protocol_communication += len(packb(m2))
             self.t_user_compute_blind_challenge.append(t)
 
             m3, t = perf_measure_call(issuer.respond, m2)
+            protocol_communication += len(packb(m3))
             self.t_issuer_respond.append(t)
 
             cred_private, t = perf_measure_call(user.compute_credential, m3)
             self.t_user_compute_credential.append(t)
 
             cred, t = perf_measure_call(cred_private.show_credential, [True, True, True, False])
+            # The credential stores the raw message and attributes. This size is dependent on the user's input. 
+            credential_size = len(packb(cred)) - len(message) - len(packb(cred_private.bpriv.raw_values))
             self.t_cred_private_show_credential.append(t)
 
             _, t = perf_measure_call(cred.verify_credential, issuer_pub)
             self.t_cred_verify_credential.append(t)
+
+            if not size_printed:
+                print(f"ACL => priv: {len(packb(cred_private))}, credential size (showing the credential): {credential_size}, communication cost: {protocol_communication}")
+                size_printed = True
 
 
     def save(self, filename='acl-benchmark.json'):
@@ -227,14 +243,12 @@ class ACLBenchmark:
 
 
 if __name__ == '__main__':
-    # Benchmarks = [ACLBenchmark, AbeBenchmark]
-    Benchmarks = [ACLBenchmark]
+    Benchmarks = [ACLBenchmark, AbeBenchmark]
+    print(f"Benchmarking with curve {EcGroup.list_curves()[DEFAULT_GROUP_ID]}.")
 
     for Benchmark in Benchmarks:
         benchmark = Benchmark(n_repetitions=1000)
-        gc.disable()
         benchmark.run()
-        gc.enable()
 
         benchmark.save()
 
