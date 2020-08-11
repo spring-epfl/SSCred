@@ -37,7 +37,7 @@ from hashlib import sha256
 from sscred.commitment import *
 from sscred.config import DEFAULT_GROUP_ID
 
-class AbeParam(object):
+class AbeParam():
     """Param for ACL and commitments"""
 
     def __init__(self, group=EcGroup(DEFAULT_GROUP_ID)):
@@ -54,7 +54,7 @@ class AbeParam(object):
 
 
 @attr.s
-class AbeSignature(object):
+class AbeSignature():
     message = attr.ib() # type: Union[bytes, str]
     Zeta = attr.ib()    # type: EcPt
     Zeta1 = attr.ib()   # type: EcPt
@@ -67,7 +67,7 @@ class AbeSignature(object):
 
 
 @attr.s
-class SignerCommitMessage(object):
+class SignerCommitMessage():
     rnd = attr.ib() # type: Bn
     A = attr.ib()   # type: EcPt
     B1 = attr.ib()  # type: EcPt
@@ -75,7 +75,7 @@ class SignerCommitMessage(object):
 
 
 @attr.s
-class SignerRespondMessage(object):
+class SignerRespondMessage():
     r = attr.ib()  # type: Bn
     c = attr.ib()  # type: Bn
     s1 = attr.ib() # type: Bn
@@ -84,11 +84,11 @@ class SignerRespondMessage(object):
 
 
 @attr.s
-class AbePrivateKey(object):
+class AbePrivateKey():
     sk = attr.ib() # type: Bn
 
 
-class AbePublicKey(object):
+class AbePublicKey():
 
     def __init__(self, param, priv):
         """Use AbeParam.generate_new_key_pair to generate a fresh key pair.
@@ -165,7 +165,7 @@ class AbePublicKey(object):
 
 
 ############### Signer ################
-class AbeSigner(object):
+class AbeSigner():
     """A class which handles the signer role.
     
     Warning: This class can only sign one message at a time. 
@@ -221,7 +221,7 @@ class AbeSigner(object):
         return SignerRespondMessage(r, c, self.s1, self.s2, self.d)
 
 
-class AbeUser(object):
+class AbeUser():
 
     def __init__(self, public, verify_pk=False):
         """Creates a new user.

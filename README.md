@@ -21,7 +21,7 @@ Note: Only blinded Pederson commitment and ACL depend on `zksk` and you can use 
 You can use `pip` to install the library.
 
 ```
-pip install git+https://github.com/spring-epfl/SSCred
+pip install sscred
 ```
 
 You can use `pytest` to test the installation

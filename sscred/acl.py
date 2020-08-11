@@ -17,12 +17,12 @@ A guide to ACL:
 
 4. CredentialChallenge: The user blinds the commitment $C$ with the randomeness
    $t$ to get a new commitment $C'$. The user computes the fiat-shamir challenge
-   $\epsilon$ based on $C'$, blinds it to $e$, and sends the blinded challenge
+   $\\epsilon$ based on $C'$, blinds it to $e$, and sends the blinded challenge
    to the prover.
 
 5. CredentialResponse: The prover sends completes the sigma protocol and sends
    the response for $(C, e)$ to the user. The user unblinds the response to form
-   a signature withZ $(C', \epsilon)$. 
+   a signature withZ $(C', \\epsilon)$. 
 
 Steps 2 and 3 can be combined together.
 
@@ -66,7 +66,7 @@ class ACLParam(AbeParam):
     """
 
     def __init__(self, group=EcGroup(DEFAULT_GROUP_ID)):
-        super(ACLParam, self).__init__(group)
+        super().__init__(group)
 
     def generate_new_key_pair(self):
         sk = self.q.random()
@@ -77,7 +77,7 @@ class ACLParam(AbeParam):
 
 class ACLIssuerPrivateKey(AbePrivateKey):
     def __init__(self, sk):
-        super(ACLIssuerPrivateKey, self).__init__(sk=sk)
+        super().__init__(sk=sk)
 
 
 class ACLIssuerPublicKey(AbePublicKey):
@@ -88,7 +88,7 @@ class ACLIssuerPublicKey(AbePublicKey):
             param (ACLParam): parameters
             priv (ACLIssuerPrivateKey): issuer's private key
         """
-        super(ACLIssuerPublicKey, self).__init__(param, private)
+        super().__init__(param, private)
         # Improvement: reusing an existing param for common gens can speed up 
         # the process.
         self.bc_param = BlindedPedersenParam(
@@ -106,7 +106,7 @@ class ACLIssuerPublicKey(AbePublicKey):
         """
         return self.Z == self.bc_param.Z and \
                self.param.G == self.bc_param.H_2 and \
-               super(ACLIssuerPrivateKey, self).verify_parameters(verify_bases)
+               super().verify_parameters(verify_bases)
 
 
 @attr.s
@@ -125,9 +125,7 @@ class ACLIssuer(AbeSigner):
             private (ACLIssuerPrivateKey): issuer's private key
             public (ACLIssuerPublicKey): issuer's public key
         """
-        self.param = public.param
-        self.public = public
-        self.private = private
+        super().__init__(private, public)
 
     def _compute_z1(self, rnd):
         return self.user_attr_commitment.commit + rnd * self.param.G
@@ -151,7 +149,7 @@ class ACLIssuer(AbeSigner):
             raise Exception("Attribute proof is invalid.")
         
         self.user_attr_commitment = prove_attr_msg.commit
-        return super(ACLIssuer, self).commit()
+        return super().commit()
 
 
 class ACLUser(AbeUser):
@@ -163,8 +161,7 @@ class ACLUser(AbeUser):
     """
 
     def __init__(self, public):
-        self.param = public.param
-        self.public = public
+        super().__init__(public)
 
     def _compute_z1(self, rnd):
         if not isinstance(rnd, Bn) or rnd == 0 or not (0 <= rnd < self.param.q):
@@ -218,7 +215,7 @@ class ACLUser(AbeUser):
 
 
 
-class ACLCredentialPrivate(object):
+class ACLCredentialPrivate():
 
     def __init__(self, signature, bcommit, bpriv):
         """An ACL credential's secret. This object can be used to generate a
@@ -263,7 +260,7 @@ class ACLCredentialPrivate(object):
         return cred
 
 
-class ACLCredential(object):
+class ACLCredential():
 
     def __init__(self, signature, bcommit, bc_proof):
         """An ACL credential.

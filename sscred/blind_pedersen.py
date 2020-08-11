@@ -50,7 +50,7 @@ class BlindedPedersenParam(CommitParam):
             Z (EcPt): blindness generator(z^y, C^y) (Optional)
             H_2 (EcPt): Additional randomizer. Allows ACl compatibility. (Optional)
         """
-        super(BlindedPedersenParam, self).__init__(group, hs_size)
+        super().__init__(group, hs_size)
         self.Z = Z if Z is not None else self.group.hash_to_point(b"bl_z")
         self.H_2 = H_2 if H_2 is not None else self.group.infinite()
 
@@ -165,7 +165,7 @@ class BlindedPedersenParam(CommitParam):
 
 
 @attr.s
-class BlPedersenPrivate(object):
+class BlPedersenPrivate():
     """A blinded Pedersen commitment's secret values.
 
     Attributes:
@@ -185,7 +185,7 @@ class BlPedersenPrivate(object):
 
 
 @attr.s
-class BlPedersenProof(object):
+class BlPedersenProof():
     """A NIZK proof of knowing the opening of a BlindedPedersenCommitment.
 
     Attributes:
@@ -206,10 +206,12 @@ class BlPedersenProof(object):
     nizk_proof = attr.ib()        # type: zksk.NIZK
 
 
-class BlPedersenCommitment(object):
+class BlPedersenCommitment():
+    """The public commitment in a blinded Pedersen commitment"""
+
 
     def __init__(self, bl_z, bl_commit):
-        """A blinded Pedersen commitment.
+        """Create a blinded Pedersen commitment.
 
         Attributes:
             bl_commit (EcPt): randomized commitment = C ^ blindness_rand
@@ -290,7 +292,7 @@ class BlPedersenCommitment(object):
         """
 
         if bc_param.get_param_num() < len(bproof.bl_hi):
-            self.expand_params_len(len(bproof.bl_hi))
+            bc_param.expand_params_len(len(bproof.bl_hi))
         bl_rand_sec = Secret(name="blindness_rand")
 
         # randomness

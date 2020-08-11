@@ -24,7 +24,7 @@ from petlib.bn import Bn
 from sscred.config import DEFAULT_GROUP_ID
 
 
-class CommitParam(object):
+class CommitParam():
     """ Common parameters for Pedersen commitment."""
 
     def __init__(self, group=EcGroup(DEFAULT_GROUP_ID), hs_size=0):
@@ -101,7 +101,7 @@ class CommitParam(object):
 
 
 @attr.s
-class PedersenProof(object):
+class PedersenProof():
     """A NIZK proof for knowing the values inside a PedersenCommitment
 
     Attributes:
@@ -113,7 +113,7 @@ class PedersenProof(object):
     response = attr.ib()
 
 
-class PedersenCommitment(object):
+class PedersenCommitment():
 
     def __init__(self, commit):
         """A Pedersen commitment.

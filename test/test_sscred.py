@@ -6,7 +6,6 @@ from sscred.commitment import *
 from sscred.blind_signature import *
 from sscred.blind_pedersen import *
 from sscred.acl import *
-import sscred.examples
 from sscred.config import DEFAULT_GROUP_ID
 from sscred.pack import packb, unpackb, add_msgpack_support
 
@@ -310,8 +309,6 @@ def test_pack_acl():
     assert cred.get_message() == b"This isn't a test message."
     assert cred.get_attributes() == [13, 'Hello', 'WoRlD', None]
 
-def test_run_all_examples():
-    sscred.examples.main()
 
 def main():
     pass
