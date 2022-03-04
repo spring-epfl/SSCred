@@ -4,10 +4,12 @@ import re
 
 from setuptools import setup
 
+from sscred import *
+
 
 PACKAGE_NAME = "sscred"
 INSTALL_REQUIRES = [
-    "petlib", 
+    "petlib",
     "zksk"
 ]
 SETUP_REQUIRES = ["pytest-runner"]

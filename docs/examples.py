@@ -9,7 +9,7 @@ from sscred.pack import *
 
 def pederson_commitment_example():
     values = [Bn(2651), Bn(1), Bn(98)]
-    pparam = CommitParam(hs_size=len(values))
+    pparam = PedersenParameters(hs_size=len(values))
     pcommit, prand = pparam.commit(values)
 
     # reveal the opening
@@ -45,10 +45,10 @@ def blind_signature_example():
     message = "Hello world"
 
     # Interactive signing
-    com = signer.commit()
-    challenge = user.compute_blind_challenge(com, message)
-    resp = signer.respond(challenge)
-    sig = user.compute_signature(resp)
+    com, com_params = signer.commit()
+    challenge, challenge_params = user.compute_blind_challenge(com, message)
+    resp = signer.respond(challenge, com_params)
+    sig = user.compute_signature(resp, challenge_params)
 
     # Verifying the signature
     assert pk.verify_signature(sig)
@@ -65,16 +65,16 @@ def acl_example():
     # Issuance
     attributes = [Bn(13), "Hello", "WoRlD", "Hidden"]
     attr_proof = user.prove_attr_knowledge(attributes)
-    com = issuer.commit(attr_proof)
-    challenge = user.compute_blind_challenge(com, message)
-    resp = issuer.respond(challenge)
-    cred_private = user.compute_credential(resp)
+    com, com_params = issuer.commit(attr_proof)
+    challenge, challenge_params = user.compute_blind_challenge(com, message)
+    resp = issuer.respond(challenge, com_params)
+    cred_private = user.compute_credential(resp, challenge_params)
 
     # show credential
     cred = cred_private.show_credential([True, True, True, False])
     assert cred.verify_credential(issuer_pk)
-    print(cred.get_message())
-    print(cred.get_attributes())
+    print(cred.message())
+    print(cred.attributes())
 
 
 def pack_example():
@@ -83,10 +83,10 @@ def pack_example():
     user = AbeUser(pk)
     message = "Hello world"
 
-    com = signer.commit()
-    challenge = user.compute_blind_challenge(com, message)
-    resp = signer.respond(challenge)
-    sig = user.compute_signature(resp)
+    com, com_params = signer.commit()
+    challenge, challenge_params = user.compute_blind_challenge(com, message)
+    resp = signer.respond(challenge, com_params)
+    sig = user.compute_signature(resp, challenge_params)
 
     m1 = packb(com)
     m2 = packb(challenge)
@@ -94,6 +94,8 @@ def pack_example():
     m4 = packb(sig)
     m5 = packb(priv)
     m6 = packb(pk)
+    m7 = packb(com_params)
+    m8 = packb(challenge_params)
 
     assert unpackb(m1) == com
     assert unpackb(m2) == challenge
@@ -101,6 +103,8 @@ def pack_example():
     assert unpackb(m4) == sig
     assert unpackb(m5) == priv
     assert unpackb(m6) == pk
+    assert unpackb(m7) == com_params
+    assert unpackb(m8) == challenge_params
 
 
 def main():

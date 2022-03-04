@@ -14,10 +14,10 @@ import petlib.pack
 from zksk import Secret
 from zksk.base import NIZK
 
-import sscred.acl as acl 
-import sscred.commitment as commitment 
-import sscred.blind_pedersen as blind_pedersen 
-import sscred.blind_signature as blind_signature 
+from . import acl
+from . import commitment
+from . import blind_pedersen
+from . import blind_signature
 
 COUNTER_BASE = 20
 _pack_reg = dict()
@@ -34,7 +34,7 @@ def unpackb(data):
 
 
 def _default(obj, enable_inherited_classes=False):
-    """ Overwriting petlib's default to allow inheritance between packable classes.
+    """Overwriting petlib's default to allow inheritance between packable classes.
 
     This function packs obj with type(obj)'s packer. If enable_inherited_classes
     is true, the function checks for parent classed with a pack method if an
@@ -58,6 +58,51 @@ def _default(obj, enable_inherited_classes=False):
                 return msgpack.ExtType(num, enc(obj))
 
     return petlib.pack.default(obj)
+
+
+
+def add_msgpack_support_slots(cls, ext, add_cls_methods=True):
+    """Adds serialization support,
+
+    Enables packing and unpacking with msgpack with 'pack.packb' and
+    'pack.unpackb' methods.
+
+    If add_method then enables equality, reading and writing for the classs.
+    Specificly, adds methods:
+        bytes   <- obj.to_binary()
+        obj     <- cls.from_binary(bytes)
+        boolean <- obj1 == obj2
+
+    Args:
+        cls: class
+        ext: an unique code for the msgpack's Ext hook
+    """
+    def enc(obj):
+        return packb({key: getattr(obj, key) for key in obj.__slots__})
+
+    def dec(data):
+        obj = cls.__new__(cls)
+        for key, value in unpackb(data).items():
+            if key != "__weakref__":
+                setattr(obj, key, value)
+        return obj
+
+    def eq(a, b):
+        if type(a) != type(b):
+            return NotImplemented
+        for ka, kb in zip(a.__slots__, b.__slots__):
+            if getattr(a, ka) != getattr(b, kb):
+                return False
+        return True
+
+    if add_cls_methods:
+        if cls.__eq__ is object.__eq__:
+            cls.__eq__ = eq
+        cls.to_bytes = enc
+        cls.from_bytes = staticmethod(dec)
+
+    _pack_reg[cls] = (ext, enc)
+    petlib.pack.register_coders(cls, ext, enc, dec)
 
 
 def add_msgpack_support(cls, ext, add_cls_methods=True):
@@ -87,6 +132,7 @@ def add_msgpack_support(cls, ext, add_cls_methods=True):
     def eq(a, b):
         if type(a) != type(b):
             return NotImplemented
+
         return a.__dict__ == b.__dict__
 
     if add_cls_methods:
@@ -101,7 +147,7 @@ def add_msgpack_support(cls, ext, add_cls_methods=True):
 
 def register_all_classes():
     # commitment
-    add_msgpack_support(commitment.CommitParam, COUNTER_BASE+1)
+    add_msgpack_support(commitment.PedersenParameters, COUNTER_BASE+1)
     add_msgpack_support(commitment.PedersenProof, COUNTER_BASE+2)
     add_msgpack_support(commitment.PedersenCommitment, COUNTER_BASE+3)
     # blind commitment
@@ -110,23 +156,27 @@ def register_all_classes():
     add_msgpack_support(blind_pedersen.BlindedPedersenParam, COUNTER_BASE+6)
     add_msgpack_support(blind_pedersen.BlPedersenCommitment, COUNTER_BASE+7)
     # Abe's signature
-    add_msgpack_support(blind_signature.AbeParam, COUNTER_BASE+8)
-    add_msgpack_support(blind_signature.AbePublicKey, COUNTER_BASE+9)
-    add_msgpack_support(blind_signature.AbePrivateKey, COUNTER_BASE+10)
-    add_msgpack_support(blind_signature.AbeSignature, COUNTER_BASE+11)
-    add_msgpack_support(blind_signature.SignerCommitMessage, COUNTER_BASE+12)
-    add_msgpack_support(blind_signature.SignerRespondMessage, COUNTER_BASE+13)
+    add_msgpack_support_slots(blind_signature.AbeParam, COUNTER_BASE+8)
+    add_msgpack_support_slots(blind_signature.AbePublicKey, COUNTER_BASE+9)
+    add_msgpack_support_slots(blind_signature.AbePrivateKey, COUNTER_BASE+10)
+    add_msgpack_support_slots(blind_signature.AbeSignature, COUNTER_BASE+11)
+    add_msgpack_support_slots(blind_signature.SignerCommitMessage, COUNTER_BASE+12)
+    add_msgpack_support_slots(blind_signature.SignerResponseMessage, COUNTER_BASE+13)
     # ACL
-    add_msgpack_support(acl.ACLParam, COUNTER_BASE+14)
-    add_msgpack_support(acl.ACLIssuerPrivateKey, COUNTER_BASE+15)
-    add_msgpack_support(acl.ACLIssuerPublicKey, COUNTER_BASE+16)
-    add_msgpack_support(acl.ProveAttrKnowledgeMessage, COUNTER_BASE+17)
-    add_msgpack_support(acl.ACLCredential, COUNTER_BASE+18)
-    add_msgpack_support(acl.ACLCredentialPrivate, COUNTER_BASE+19)
+    add_msgpack_support_slots(acl.ACLParam, COUNTER_BASE+14)
+    add_msgpack_support_slots(acl.ACLIssuerPrivateKey, COUNTER_BASE+15)
+    add_msgpack_support_slots(acl.ACLIssuerPublicKey, COUNTER_BASE+16)
+    add_msgpack_support_slots(acl.ProveAttrKnowledgeMessage, COUNTER_BASE+17)
+    add_msgpack_support_slots(acl.ACLCredential, COUNTER_BASE+18)
+    add_msgpack_support_slots(acl.ACLCredentialPrivate, COUNTER_BASE+19)
     # zksk
     add_msgpack_support(Secret, COUNTER_BASE+20, add_cls_methods=False)
     add_msgpack_support(NIZK, COUNTER_BASE+21, add_cls_methods=False)
 
+    # Added later
+    add_msgpack_support_slots(blind_signature.SignerCommitmentInternalParameters, COUNTER_BASE+22)
+    add_msgpack_support_slots(blind_signature.UserBlindedChallengeInternalParameters, COUNTER_BASE+23)
+    add_msgpack_support_slots(blind_signature.BlindedChallengeMessage, COUNTER_BASE+24)
 
 register_all_classes()
 
@@ -137,4 +187,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
+

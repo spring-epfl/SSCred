@@ -18,31 +18,33 @@ Examples:
     [123, None, 'hello', b'world']
 """
 
+from hashlib import sha256
+from typing import List, Optional, Union
+
 import attr
 
-from hashlib import sha256
 from petlib.bn import Bn
-from petlib.ec import EcGroup
+from petlib.ec import EcGroup, EcPt
 
-from zksk.exceptions import StatementMismatch
 from zksk import Secret, DLRep
+from zksk.base import NIZK
+from zksk.exceptions import StatementMismatch
 
-from sscred.commitment import CommitParam
-from sscred.config import  DEFAULT_GROUP_ID
+from .commitment import PedersenParameters
 
 
-class BlindedPedersenParam(CommitParam):
+class BlindedPedersenParam(PedersenParameters):
     """ Common parameters for blinded Pedersen.
     This class provides both vanilla and blinded Pedersen commits. The vanilla
     commit is compatible with PedersenCommitment.
     """
 
-    def __init__(self, group=EcGroup(DEFAULT_GROUP_ID), hs_size=3, Z=None, H_2=None):
+    def __init__(self, group: Optional[EcGroup] = None, hs_size=3, Z=None, H_2=None):
         """ Return the common parameters for the specified curve.
 
         Z and H_2 are intended for compatibilities between SSCred submodules.
-        The ACL submodule uses these two arguments to customize the commitment. 
-        For standalone use of the commitment, leave Z and H_2 empty. 
+        The ACL submodule uses these two arguments to customize the commitment.
+        For standalone use of the commitment, leave Z and H_2 empty.
 
         Args:
             group (EcGroup): determines the elliptic curve used in the scheme.
@@ -81,6 +83,7 @@ class BlindedPedersenParam(CommitParam):
                 "values can only be int, Bn, bytes, string, or None.")
         return Bn.from_binary(val) % self.q
 
+
     def process_raw_values(self, raw_values):
         """process raw values.
 
@@ -94,6 +97,7 @@ class BlindedPedersenParam(CommitParam):
             (Bn mod q []): processed value
         """
         return [self.process_raw_value(raw) for raw in raw_values]
+
 
     def commit(self, raw_values):
         """"A non-blinded Pedersen commitment to values. Encodes raw values before
@@ -115,10 +119,11 @@ class BlindedPedersenParam(CommitParam):
         values = [self.process_raw_value(raw) for raw in raw_values]
         return super(BlindedPedersenParam, self).commit(values)
 
+
     def blind_commit(self, raw_values, blindness_rand=None, h_rand=None):
         """"a blind commitment to values.
 
-        Arguments blindness_rand and h_rand enable ACL compatability. 
+        Arguments blindness_rand and h_rand enable ACL compatability.
 
         Args:
             raw_values (Bn mod q/string/bytes []): committed values.
@@ -138,14 +143,13 @@ class BlindedPedersenParam(CommitParam):
         if len(values) > len(self.HS):
             self.expand_params_len(len(values))
 
-        rand = self.q.random()
+        rand = h_rand if h_rand is not None else self.q.random()
+
         rand_2 = self.q.random()
-        if h_rand is not None:
-            rand = h_rand
         if blindness_rand is None:
             blindness_rand = self.q.random()
 
-        C = rand * self.H + rand_2 * self.H_2
+        C = (rand * self.H) + (rand_2 * self.H_2)
         C += self.group.wsum(values, self.HS[: len(values)])
 
         bl_commit = blindness_rand * C
@@ -154,7 +158,7 @@ class BlindedPedersenParam(CommitParam):
         bcommit = BlPedersenCommitment(bl_z=bl_z, bl_commit=bl_commit)
         bpriv = BlPedersenPrivate(
             param=self,
-            raw_values=raw_values,
+            raw_values=list(raw_values),
             values=[Secret(val, name=f"val_{i}") for (i, val) in enumerate(values)],
             rand=Secret(rand, name="rand"),
             rand_2=Secret(rand_2, name="rand_2"),
@@ -169,19 +173,19 @@ class BlPedersenPrivate():
     """A blinded Pedersen commitment's secret values.
 
     Attributes:
-        param (BlindedPedersenParam): commitment parameters 
+        param (BlindedPedersenParam): commitment parameters
         raw_values (Union[Bn,string,bytes]): raw committed values.
         values (Secret[]): committed values.
         rand (Secret): BlPedersen's commit randomness.
         rand_2 (Secret): extra commit randomness for ACL.
         blindness_rand (Secret): blindness randomness
     """
-    param = attr.ib()            # type: BlindedPedersenParam
-    raw_values = attr.ib()       # type: Union[Bn,string,bytes]
-    values = attr.ib()           # type: List[zksk.Secret]
-    rand = attr.ib()             # type: zksk.Secret
-    rand_2 = attr.ib()           # type: zksk.Secret
-    blindness_rand = attr.ib()   # type: zksk.Secret
+    param = attr.ib()          # type: BlindedPedersenParam
+    raw_values = attr.ib()     # type: Union[Bn,str,bytes]
+    values = attr.ib()         # type: List[Secret]
+    rand = attr.ib()           # type: Secret
+    rand_2 = attr.ib()         # type: Secret
+    blindness_rand = attr.ib() # type: Secret
 
 
 @attr.s
@@ -200,15 +204,14 @@ class BlPedersenProof():
         The verifier already has bl_z and bl_commit from the commit phase
     """
     bl_h = attr.ib()              # type: EcPt
-    bl_h2 = attr.ib()             # type: EcPt      
+    bl_h2 = attr.ib()             # type: EcPt
     bl_hi = attr.ib()             # type: EcPt
     revealed_values = attr.ib()   # type: List[Bn]
-    nizk_proof = attr.ib()        # type: zksk.NIZK
+    nizk_proof = attr.ib()        # type: NIZK
 
 
-class BlPedersenCommitment():
+class BlPedersenCommitment:
     """The public commitment in a blinded Pedersen commitment"""
-
 
     def __init__(self, bl_z, bl_commit):
         """Create a blinded Pedersen commitment.
@@ -221,15 +224,15 @@ class BlPedersenCommitment():
         self.bl_z = bl_z
 
     def prove_values(self, bpriv, reveal_mask=None):
-        """A nizk proof of opening with the revealed values. 
+        """A nizk proof of opening with the revealed values.
         The proof contains the raw value of all revealed values. This protocol
-        does not reveal any information about non-revealed values. 
+        does not reveal any information about non-revealed values.
 
         Error:
-            Either reveal_mask should be None or have the same size of private values. 
-        Args: 
-            bpriv (BlPedersenPrivate): values and randomness. 
-            reveal_mask (boolean []): reveals value[i] iff reveal_mask[i] 
+            Either reveal_mask should be None or have the same size of private values.
+        Args:
+            bpriv (BlPedersenPrivate): values and randomness.
+            reveal_mask (boolean []): reveals value[i] iff reveal_mask[i]
                 Optional: mask=None -> reveal nothing
 
         Returns: (BlPedersenProof): a nizk proof for commitment (self)
@@ -291,7 +294,7 @@ class BlPedersenCommitment():
             boolean: pass/fail
         """
 
-        if bc_param.get_param_num() < len(bproof.bl_hi):
+        if bc_param.num_params() < len(bproof.bl_hi):
             bc_param.expand_params_len(len(bproof.bl_hi))
         bl_rand_sec = Secret(name="blindness_rand")
 

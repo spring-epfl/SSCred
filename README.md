@@ -52,19 +52,19 @@ Attributes can be either `int`, `petlib.Bn`, `str`, or `bytes`. The library hash
 
   How to use:
 ```python
->>> # generating keys and wrappers 
->>> issuer_priv, issuer_pk = ACLParam().generate_new_key_pair() 
->>> issuer = ACLIssuer(issuer_priv, issuer_pk) 
->>> user = ACLUser(issuer_pk) 
+>>> # generating keys and wrappers
+>>> issuer_priv, issuer_pk = ACLParam().generate_new_key_pair()
+>>> issuer = ACLIssuer(issuer_priv, issuer_pk)
+>>> user = ACLUser(issuer_pk)
 >>> message = "Hello world"
 
 >>> # Issuance
 >>> attributes = [Bn(13), "Hello", "WoRlD", "Hidden"]
 >>> attr_proof = user.prove_attr_knowledge(attributes)
->>> com = issuer.commit(attr_proof)
->>> challenge = user.compute_blind_challenge(com, message)
->>> resp = issuer.respond(challenge)
->>> cred_private = user.compute_credential(resp)
+>>> com, com_internal = issuer.commit(attr_proof)
+>>> challenge, challenge_internal = user.compute_blind_challenge(com, message)
+>>> resp = issuer.respond(challenge, com_internal)
+>>> cred_private = user.compute_credential(resp, challenge_internal)
 
 >>> # show credential
 >>> # Reveal attributes 0, 1, and 2.
@@ -77,7 +77,7 @@ b'Hello world'
 ```
 
 ### Abe's blind signature
-The user decides on a message and engages in an interactive protocol with the signer to compute a signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows the signer's public key. No one, including the signer, can determine the user's identity when he reveals his signature. This blind signature is similar to an ACL credential with an empty attribute list. This signature is based on Abe's blind signature<sup>[2](#cn2)</sup>. 
+The user decides on a message and engages in an interactive protocol with the signer to compute a signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows the signer's public key. No one, including the signer, can determine the user's identity when he reveals his signature. This blind signature is similar to an ACL credential with an empty attribute list. This signature is based on Abe's blind signature<sup>[2](#cn2)</sup>.
 
   How to use:
 ```python
@@ -88,10 +88,10 @@ The user decides on a message and engages in an interactive protocol with the si
 >>> message = "Hello world"
 
 >>> # Interactive signing
->>> com = signer.commit()
->>> challenge = user.compute_blind_challenge(com, message)
->>> resp = signer.respond(challenge)
->>> sig = user.compute_signature(resp)
+>>> com, com_internal = signer.commit()
+>>> challenge, challenge_internal = user.compute_blind_challenge(com, message)
+>>> resp = signer.respond(challenge, com_internal)
+>>> sig = user.compute_signature(resp, challenge_internal)
 
 >>> # Verifying the signature
 >>> assert pk.verify_signature(sig)
@@ -116,13 +116,13 @@ This scheme allows a party to prove the knowledge of a commitment without reveal
 >>> bproof = bcommit.prove_values(bpriv, reveal_mask=[True, False, True, True])
 >>> assert bcommit.verify_proof(param, bproof)
 >>> print(bproof.revealed_values)
-[123, None, 'hello', b'world']  
+[123, None, 'hello', b'world']
 ```
 
 ## Performance
-We used the `benchmark.py` to evaluate the performance. This scripts runs operations of ACL and Abe's signature 1000 times and records the cost. `benchmarkStats.py` is a script that compiles statistics based on the measurements of `benchmark.py`. 
+We used the `benchmark.py` to evaluate the performance. This scripts runs operations of ACL and Abe's signature 1000 times and records the cost. `benchmarkStats.py` is a script that compiles statistics based on the measurements of `benchmark.py`.
 
-Curve P-224 and P-256 provide 112-bit and 128-bit security respectively. Curve P-256 is heavily optimized for performance. That is why it has better performance despite higher security.  
+Curve P-224 and P-256 provide 112-bit and 128-bit security respectively. Curve P-256 is heavily optimized for performance. That is why it has better performance despite higher security.
 
 All measurements are done on a desktop equipped with Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz and 16GiB of RAM running Debian 10.
 
@@ -133,12 +133,12 @@ The communication cost shows the transfer cost of running the protocol, and the 
 | Curve | Key gen (ms) | Signer (ms) | User  (ms) | Verification (ms) | Signature size (B) | Communication (B) |
 |-------|:------------:|:-----------:|:----------:|:-----------------:|:------------------:|:-----------------:|
 | P-224 |         0.84 |        1.13 |       1.63 |              0.68 |                324 |               367 |
-| P-256 |         0.13 |        0.32 |       0.62 |              0.4  |                360 |               413 | 
+| P-256 |         0.13 |        0.32 |       0.62 |              0.4  |                360 |               413 |
 
 ### ACL
-We evaluated ACL credential with 4 attributes; we reveal  3 of these attributes in the showing credential process. 
+We evaluated ACL credential with 4 attributes; we reveal  3 of these attributes in the showing credential process.
 
-The communication cost shows the transfer cost of the issuance protocol, and the credential size is the transfer cost of showing the credential. The size of the message and raw values are not included in the credential size as they depend on the user's input. The communication cost of showing the credential is higher than issuance because of large NIZK proofs. 
+The communication cost shows the transfer cost of the issuance protocol, and the credential size is the transfer cost of showing the credential. The size of the message and raw values are not included in the credential size as they depend on the user's input. The communication cost of showing the credential is higher than issuance because of large NIZK proofs.
 
 | Curve | Key gen (ms) | Issuer (ms) | User  (ms) | Showing cred(ms)| Verification (ms) | Credential size (B) | Communication (B) |
 |-------|:------------:|:-----------:|:----------:|:---------------:|:-----------------:|:-------------------:|:-----------------:|

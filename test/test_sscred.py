@@ -1,3 +1,4 @@
+from typing import Union
 import pytest
 
 from petlib.bn import Bn
@@ -12,7 +13,7 @@ from sscred.pack import packb, unpackb, add_msgpack_support
 
 def test_pedersen_commit_verification():
     values = [Bn(2651), Bn(1), Bn(98)]
-    pparam = CommitParam(hs_size=len(values))
+    pparam = PedersenParameters(hs_size=len(values))
     assert pparam.verify_parameters()
     pcommit, prand = pparam.commit(values)
     assert pcommit.verify(pparam, prand, values)
@@ -20,7 +21,7 @@ def test_pedersen_commit_verification():
 
 def test_pedersen_commit_proof():
     values = [Bn(2651), Bn(1), Bn(98)]
-    pparam = CommitParam(hs_size=len(values))
+    pparam = PedersenParameters(hs_size=len(values))
     pcommit, prand = pparam.commit(values)
     proof = pcommit.prove_knowledge(pparam, prand, values)
     assert pcommit.verify_proof(pparam, proof)
@@ -28,34 +29,51 @@ def test_pedersen_commit_proof():
 
 def test_pedersen_commit_invalid_proof():
     values = [Bn(2651), Bn(1), Bn(98)]
-    pparam = CommitParam(hs_size=len(values))
+    pparam = PedersenParameters(hs_size=len(values))
     pcommit, prand = pparam.commit(values)
-    prand = pparam.q.random()
+    prand = PedersenRandom(pparam.q.random())
     assert not pcommit.verify(pparam, prand, values)
     proof = pcommit.prove_knowledge(pparam, prand, values)
     assert not pcommit.verify_proof(pparam, proof)
 
 
-def auto_sign(signer, user, message):
-    m1 = signer.commit()
-    m2 = user.compute_blind_challenge(m1, message)
-    m3 = signer.respond(m2)
-    sig = user.compute_signature(m3)
+def auto_sign(signer: AbeSigner, user: AbeUser, message: Union[bytes, str]) -> AbeSignature:
+    m1, p1 = signer.commit()
+    m2, p2 = user.compute_blind_challenge(m1, message)
+    m3 = signer.respond(m2, p1)
+    sig = user.compute_signature(m3, p2)
     return sig
 
 
 def test_abe_signature_verification():
     priv, pk = AbeParam().generate_new_key_pair()
-    signer = AbeSigner(priv, pk)
 
     # To ensure that signer's previous signature's state does not corrupt future
-    # queries
+    # queries if used in an iterative way.
+    signer = AbeSigner(priv, pk)
+    user = AbeUser(pk)
     for i in range(1, 10):
-        user = AbeUser(pk)
         message = f"Hello world{i}"
         sig = auto_sign(signer, user, message)
         assert pk.verify_signature(sig)
         assert message.encode('utf8') == sig.message
+
+
+def test_abe_signature_concurrent_fail_if_acl_is_enabled():
+    priv, pk = AbeParam().generate_new_key_pair()
+    signer = AbeSigner(priv, pk, disable_acl=False)
+
+    signer.commit()
+    with pytest.raises(AbeSignerStateInvalid):
+        signer.commit()
+
+
+def test_abe_signature_concurrent_fail_if_acl_is_disabled():
+    priv, pk = AbeParam().generate_new_key_pair()
+    signer = AbeSigner(priv, pk, disable_acl=True)
+
+    signer.commit()
+    signer.commit()
 
 
 def test_abe_signature_verification_corrupted():
@@ -155,14 +173,14 @@ def test_bl_pedersen_invalid():
     assert not bcommit.verify_proof(param, bproof)
 
 
-def auto_cred(user, issuer, attrs):
+def auto_cred(user: ACLUser, issuer: ACLIssuer, attrs: List[Attribute]):
     # Interactive signing
     message = "This isn't a test message."
     m0 = user.prove_attr_knowledge(attrs)
-    m1 = issuer.commit(m0)
-    m2 = user.compute_blind_challenge(m1, message)
-    m3 = issuer.respond(m2)
-    return user.compute_credential(m3)
+    m1, p1 = issuer.commit(m0)
+    m2, p2 = user.compute_blind_challenge(m1, message)
+    m3 = issuer.respond(m2, p1)
+    return user.compute_credential(m3, p2)
 
 
 def test_acl_valid():
@@ -177,8 +195,8 @@ def test_acl_valid():
     # show credential
     cred = cred_private.show_credential([True, True, True, False])
     assert cred.verify_credential(issuer_pk)
-    assert cred.get_message() == b"This isn't a test message."
-    assert cred.get_attributes() == [13, 'Hello', 'WoRlD', None]
+    assert cred.message() == b"This isn't a test message."
+    assert cred.attributes() == [13, 'Hello', 'WoRlD', None]
 
     with pytest.raises(Exception):
         cred_private.show_credential([True, False, True, False])
@@ -252,10 +270,10 @@ def test_pack_blind_sig():
     signer = AbeSigner(priv, pk)
     user = AbeUser(pk)
     message = "Hello world"
-    com = signer.commit()
-    challenge = user.compute_blind_challenge(com, message)
-    resp = signer.respond(challenge)
-    sig = user.compute_signature(resp)
+    com, signer_params = signer.commit()
+    challenge, user_params = user.compute_blind_challenge(com, message)
+    resp = signer.respond(challenge, signer_params)
+    sig = user.compute_signature(resp, user_params)
 
     m1 = packb(com)
     m2 = packb(challenge)
@@ -280,10 +298,10 @@ def test_pack_acl():
     message = "This isn't a test message."
 
     m0 = user.prove_attr_knowledge(attrs)
-    m1 = issuer.commit(m0)
-    m2 = user.compute_blind_challenge(m1, message)
-    m3 = issuer.respond(m2)
-    cred_private = user.compute_credential(m3)
+    m1, p1 = issuer.commit(m0)
+    m2, p2 = user.compute_blind_challenge(m1, message)
+    m3 = issuer.respond(m2, p1)
+    cred_private = user.compute_credential(m3, p2)
     cred = cred_private.show_credential([True, True, True, False])
 
     m0p = packb(m0)
@@ -293,7 +311,7 @@ def test_pack_acl():
     cred_privatep = packb(cred_private)
     credp = packb(cred)
 
-    
+
     # the original message is representing m0.nizk_proof.response as list while
     # the unpacked version represent it as a tuple
     # assert unpackb(m0p) == m0
@@ -306,8 +324,8 @@ def test_pack_acl():
 
     cred = unpackb(credp)
     assert cred.verify_credential(issuer_pk)
-    assert cred.get_message() == b"This isn't a test message."
-    assert cred.get_attributes() == [13, 'Hello', 'WoRlD', None]
+    assert cred.message() == b"This isn't a test message."
+    assert cred.attributes() == [13, 'Hello', 'WoRlD', None]
 
 
 def main():

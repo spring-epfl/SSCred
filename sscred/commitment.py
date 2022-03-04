@@ -15,19 +15,29 @@ Example:
     True
 
 """
-import attr
+
+from __future__ import annotations
 
 from hashlib import sha256
-from petlib.ec import EcGroup
+from typing import (
+    Collection,
+    List,
+    Optional,
+    Tuple,
+)
+
+import attr
+
+from petlib.ec import EcGroup, EcPt
 from petlib.bn import Bn
 
-from sscred.config import DEFAULT_GROUP_ID
+from . import config
 
 
-class CommitParam():
+class PedersenParameters:
     """ Common parameters for Pedersen commitment."""
 
-    def __init__(self, group=EcGroup(DEFAULT_GROUP_ID), hs_size=0):
+    def __init__(self, group: Optional[EcGroup] = None, hs_size: int = 0):
         """ Return the common parameters for the specified curve.
 
         Args:
@@ -35,27 +45,34 @@ class CommitParam():
             hs_size: generate $hs_size bases for values. expand_params_len
                 allows expanding parameters.
         """
-        self.group = group
-        self.q = self.group.order()
+        self.group: EcGroup = EcGroup(config.DEFAULT_GROUP_ID) if group is None else group
+        self.q: Bn = self.group.order()
 
-        self.H = self.group.hash_to_point(b"com_h")
-        self.HS = list()
+        self.H: EcPt = self.group.hash_to_point(b"com_h")
+        self.HS: List[EcPt] = list()
+
         self.expand_params_len(hs_size)
 
-    def __repr__(self):
-        return (f'<{type(self).__name__}:{self.__dict__}')
 
-    def expand_params_len(self, hs_size):
+    def num_params(self) -> int:
+        return len(self.HS)
+
+
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__}:{self.__dict__}"
+
+
+    def expand_params_len(self, hs_size: int) -> None:
         """Expand the number of available bases."""
         if hs_size <= len(self.HS):
             return
+
         for i in range(len(self.HS), hs_size):
-            self.HS.append(self.group.hash_to_point(("com_h%s" % i).encode("utf8")))
+            suffix = i.to_bytes((i.bit_length() + 7) >> 3, 'big')
+            self.HS.append(self.group.hash_to_point(b"com_h" + suffix))
 
-    def get_param_num(self):
-        return len(self.HS)
 
-    def verify_parameters(self, valid_parameters=None):
+    def verify_parameters(self, valid_parameters: Optional[PedersenParameters] = None):
         """Verifies parameters. This function always checks generators'
         randomness by reproducing the hash_to_point. valid_parameters is
         optional and uses a valid parameter as the base to prevent unnecessary
@@ -68,17 +85,19 @@ class CommitParam():
         """
 
         if valid_parameters is None:
-            valid_parameters = CommitParam()
-        valid_parameters.expand_params_len(self.get_param_num())
+            valid_parameters = PedersenParameters()
+        valid_parameters.expand_params_len(self.num_params())
 
         if valid_parameters.H != self.H:
             return False
-        for i in range(self.get_param_num()):
-            if valid_parameters.HS[i] != self.HS[i]:
-                return False
+
+        if any(valid_parameters.HS[i] != hs for i, hs in enumerate(self.HS)):
+            return False
+
         return True
 
-    def commit(self, values):
+
+    def commit(self, values: Collection[Bn]) -> Tuple[PedersenCommitment, PedersenRandom]:
         """"commit to values.
 
         Args:
@@ -89,19 +108,23 @@ class CommitParam():
             PedersenRand: commitment's randomness
         """
 
-        if len(values) > len(self.HS):
-            self.expand_params_len(len(values))
+        self.expand_params_len(len(values))
 
-        rand = self.q.random()
-        C = rand * self.H
+        rand: Bn = self.q.random()
+        C: EcPt = rand * self.H
         C += self.group.wsum(values, self.HS[:len(values)])
 
-        pcommit = PedersenCommitment(C)
-        return pcommit, rand
+        return PedersenCommitment(C), PedersenRandom(rand)
 
 
 @attr.s
-class PedersenProof():
+class PedersenRandom:
+    """Pedersen commitment's random parameter."""
+    rand = attr.ib() # type: Bn
+
+
+@attr.s
+class PedersenProof:
     """A NIZK proof for knowing the values inside a PedersenCommitment
 
     Attributes:
@@ -109,21 +132,27 @@ class PedersenProof():
                 challenge = SHA-256(pcommit, sigma_commit)
         response (Bn mod q, Bn mod q[]): sigma protocol's response values
     """
-    challenge = attr.ib()
-    response = attr.ib()
+    challenge = attr.ib() # type: Bn
+    response = attr.ib()  # type: Bn
 
 
-class PedersenCommitment():
+class PedersenCommitment:
 
-    def __init__(self, commit):
+    def __init__(self, commit: EcPt):
         """A Pedersen commitment.
 
         Attributes:
             commit (EcPt): commitment's point
         """
-        self.commit = commit
+        self.commit: EcPt = commit
 
-    def verify(self, pparam, prand, values):
+
+    def verify(
+            self,
+            pparam: PedersenParameters,
+            prand: PedersenRandom,
+            values: Collection[Bn]
+        ) -> bool:
         """Verify the commitment.
 
         Args:
@@ -134,25 +163,28 @@ class PedersenCommitment():
         Returns:
             boolean: pass/fail
         """
-        C = self.commit
-        r, values = prand, values
-
         if len(values) > len(pparam.HS):
             raise Exception(f"parameters does not support enough {len(values)} values")
 
-        if not pparam.group.check_point(C):
+        if not pparam.group.check_point(self.commit):
             return False
-        if not (0 <= r < pparam.q):
+        if not (0 <= prand.rand < pparam.q):
             return False
-        for v in values:
-            if not (0 <= v < pparam.q):
-                return False
 
-        rhs = r * pparam.H
+        if any((not (0 <= v < pparam.q) for v in values)):
+            return False
+
+        rhs: EcPt = prand.rand * pparam.H
         rhs += pparam.group.wsum(values, pparam.HS[:len(values)])
-        return C == rhs
+        return self.commit == rhs
 
-    def prove_knowledge(self, pparam, prand, values):
+
+    def prove_knowledge(
+            self,
+            pparam: PedersenParameters,
+            prand: PedersenRandom,
+            values: Collection[Bn]
+        ) -> PedersenRandom:
         """ A non-interactive proof of knowledge of opening an commitment.
 
         Args:
@@ -174,11 +206,12 @@ class PedersenCommitment():
         e = Bn.from_binary(chash) % pparam.q
 
         # sigma protocol's response phase
-        s_h = r_h - prand * e
+        s_h = r_h - prand.rand * e
         s_vs = [r - x * e for (x, r) in zip(values, r_vs)]
         return PedersenProof(e, (s_h, s_vs))
 
-    def verify_proof(self, pparam, proof):
+
+    def verify_proof(self, pparam: PedersenParameters, proof: PedersenProof) -> bool:
         """Verify a PedersenProof for this commitment.
 
         Args:
@@ -186,12 +219,15 @@ class PedersenCommitment():
         Returns:
             boolean: pass/fail
         """
-        sigma_commit = proof.response[0] * pparam.H
+        sigma_commit: EcPt = proof.response[0] * pparam.H
         sigma_commit += proof.challenge * self.commit
-        sigma_commit += pparam.group.wsum(proof.response[1],
-            pparam.HS[:len(proof.response[1])])
-        chash = sha256(self.commit.export() + sigma_commit.export()).digest()
-        h = Bn.from_binary(chash) % pparam.q
+        sigma_commit += pparam.group.wsum(
+            proof.response[1],
+            pparam.HS[:len(proof.response[1])]
+        )
+        chash: bytes = sha256(self.commit.export() + sigma_commit.export()).digest()
+        h: Bn = Bn.from_binary(chash) % pparam.q
+
         return h == proof.challenge
 
 

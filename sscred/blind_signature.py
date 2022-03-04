@@ -8,56 +8,91 @@ An implementation of Abe's blind signature. An user 'AbeUser' asks a signer
 
 The parameters' names follow the Abe's paper notation.
 
-Naming convention: Variables denoting EcPt are named with a capital letter
-while scalar variables start with a small letter.
-
 Example:
     >>> # generating keys and wrappers
     >>> priv, pk = AbeParam().generate_new_key_pair()
     >>> signer = AbeSigner(priv, pk)
     >>> user = AbeUser(pk)
-    >>> message = "Hello world"
+    >>> message = b"Hello world"
     >>> # Interactive signing
-    >>> com = signer.commit()
-    >>> challenge = user.compute_blind_challenge(com, message)
-    >>> resp = signer.respond(challenge)
-    >>> sig = user.compute_signature(resp)
+    >>> com, com_intern = signer.commit()
+    >>> challenge, challenge_intern = user.compute_blind_challenge(com, message)
+    >>> resp = signer.respond(challenge, com_intern)
+    >>> sig = user.compute_signature(resp, challenge_intern)
     >>> # Verifying the signature
     >>> assert pk.verify_signature(sig)
     >>> print(sig.message)
     b'Hello world'
 """
 
-import attr
+from __future__ import annotations
 
-from petlib.bn import Bn
-from petlib.ec import EcPt
+from enum import IntEnum
 from hashlib import sha256
+from threading import Lock
+from typing import (
+    Callable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
-from sscred.commitment import *
-from sscred.config import DEFAULT_GROUP_ID
+import attr
+from petlib.bn import Bn
+from petlib.ec import (
+    EcPt,
+    EcGroup,
+)
 
-class AbeParam():
-    """Param for ACL and commitments"""
+from . import config
 
-    def __init__(self, group=EcGroup(DEFAULT_GROUP_ID)):
-        self.group = group                          # type: Bn
-        self.q = self.group.order()                 # type: Bn
-        self.G = self.group.hash_to_point(b"sig_g") # type: EcPt
-        self.H = self.group.hash_to_point(b"sig_h") # type: EcPt
 
-    def generate_new_key_pair(self):
-        sk = self.q.random()
+class AbeSignerStateInvalid(Exception):
+    """The Abe signer is in an invalid state."""
+
+
+class AbePublicKeyInvalid(Exception):
+    """The public key for Abe's blind signature scheme is invalid."""
+
+
+class AbeSignerState(IntEnum):
+    """State of the Abe signer."""
+    COMMITTED = 0
+    READY_TO_COMMIT = 1
+
+
+class AbeParam:
+    """Parameters for Abe's blind signature scheme.
+
+    :param group: elliptic curve to use for the blind signature
+    """
+
+    __slots__ = ("group", "q", "g", "h")
+
+    def __init__(self, group: Optional[EcGroup] = None) -> None:
+        self.group: EcGroup = EcGroup(config.DEFAULT_GROUP_ID) if group is None else group
+        self.q: Bn = self.group.order()
+        self.g: EcPt = self.group.hash_to_point(b"sig_g")
+        self.h: EcPt = self.group.hash_to_point(b"sig_h")
+
+
+    def generate_new_key_pair(self) -> Tuple[AbePrivateKey, AbePublicKey]:
+        """Generate a new key pair for Abe's blind signature.
+
+        :return: a tuple containing a private key and its corresponding public key
+        """
+        sk: Bn = self.q.random()
         private = AbePrivateKey(sk)
-        public = AbePublicKey(self, private)
+        public = private.public_key(self)
         return private, public
 
 
-@attr.s
-class AbeSignature():
+@attr.s(slots=True)
+class AbeSignature:
     message = attr.ib() # type: Union[bytes, str]
-    Zeta = attr.ib()    # type: EcPt
-    Zeta1 = attr.ib()   # type: EcPt
+    zeta = attr.ib()    # type: EcPt
+    zeta1 = attr.ib()   # type: EcPt
     rho = attr.ib()     # type: Bn
     w = attr.ib()       # type: Bn
     delta1 = attr.ib()  # type: Bn
@@ -66,16 +101,44 @@ class AbeSignature():
     micro = attr.ib()   # type: Bn
 
 
-@attr.s
-class SignerCommitMessage():
+@attr.s(slots=True)
+class SignerCommitMessage:
     rnd = attr.ib() # type: Bn
-    A = attr.ib()   # type: EcPt
-    B1 = attr.ib()  # type: EcPt
-    B2 = attr.ib()  # type: EcPt
+    a = attr.ib()   # type: EcPt
+    b1 = attr.ib()  # type: EcPt
+    b2 = attr.ib()  # type: EcPt
 
 
-@attr.s
-class SignerRespondMessage():
+@attr.s(slots=True)
+class SignerCommitmentInternalParameters:
+    u = attr.ib()  # type: Bn
+    s1 = attr.ib() # type: Bn
+    s2 = attr.ib() # type: Bn
+    d = attr.ib()  # type: Bn
+
+    @classmethod
+    def new(cls, q: Bn) -> SignerCommitmentInternalParameters:
+        """Generate a new set of random internal parameters."""
+        return cls(*(q.random() for _ in range(4)))
+
+
+@attr.s(slots=True)
+class BlindedChallengeMessage:
+    e = attr.ib() # type: Bn
+
+
+@attr.s(slots=True)
+class UserBlindedChallengeInternalParameters:
+    blinder = attr.ib() # type: Bn
+    tau = attr.ib()     # type: Bn
+    t = attr.ib()       # type: List[Bn]
+    zeta = attr.ib()    # type: EcPt
+    zeta1 = attr.ib()   # type: EcPt
+    message = attr.ib() # type: bytes
+
+
+@attr.s(slots=True)
+class SignerResponseMessage:
     r = attr.ib()  # type: Bn
     c = attr.ib()  # type: Bn
     s1 = attr.ib() # type: Bn
@@ -83,248 +146,351 @@ class SignerRespondMessage():
     d = attr.ib()  # type: Bn
 
 
-@attr.s
-class AbePrivateKey():
+@attr.s(slots=True)
+class AbePrivateKey:
     sk = attr.ib() # type: Bn
 
+    def public_key(self, params: Optional[AbeParam] = None) -> AbePublicKey:
+        """Create a public key corresponding to this private key."""
+        if params is None:
+            params = AbeParam()
+        return AbePublicKey(params, self)
 
-class AbePublicKey():
 
-    def __init__(self, param, priv):
-        """Use AbeParam.generate_new_key_pair to generate a fresh key pair.
+class AbePublicKey:
+    """Public key for Abe's blind signature scheme.
 
-        Attributes:
-            param (AbeParam): parameters
-            priv (AbePrivateKey): signer's private key
-        """
-        self.param = param              # type: AbeParam
-        self.PK = priv.sk * param.G     # type: EcPt
-        self.Z = self._compute_z_param()
+    :param param: parameters
+    :param priv: signer's private key
+    """
 
-    def _compute_z_param(self):
+    __slots__ = ("param", "pk", "z")
+
+
+    def __init__(self, param: AbeParam, priv: AbePrivateKey) -> None:
+        self.param: AbeParam = param
+        self.pk: EcPt = priv.sk * param.g
+        self.z: EcPt = self._compute_z_param()
+
+
+    def _compute_z_param(self) -> EcPt:
         return self.param.group.hash_to_point(
-            self.param.G.export() + self.param.H.export() + self.PK.export()
+            self.param.g.export() + self.param.h.export() + self.pk.export()
         )
 
-    def verify_parameters(self, verify_bases=False):
-        """Verifies that the public key is generated correctly.
-        
-        Args:
-            verify_bases (bool): if true, verifies public parameter's generators G, H
+
+    def verify_parameters(self, verify_bases: bool = False) -> bool:
+        """Verify that the public key is valid.
+
+        :param verify_bases: verifies public parameter's generators G and H
+        :return: True if the public key is valid, False otherwise
         """
         if verify_bases:
-            if self.param.G != self.Z.group.hash_to_point(b"sig_g"):
+            if self.param.g != self.z.group.hash_to_point(b"sig_g"):
                 return False
-            if self.param.H != self.Z.group.hash_to_point(b"sig_h"):
+            if self.param.h != self.z.group.hash_to_point(b"sig_h"):
                 return False
-        return self.Z == self._compute_z_param()
+        return self.z == self._compute_z_param()
 
-    def verify_signature(self, sig):
-        """verifies the correctness of the signature
 
-        Args:
-            sig (AbeSignature): the signature
+    def verify_signature(self, sig: AbeSignature) -> bool:
+        """Verify that the signature is valid
+
+        :param sig: the signature to verify
+        :return: True if the signature is valid, False otherwise
         """
 
-        param = self.param
-        try:
-            # check sig's variables range
-            assert param.group.check_point(sig.Zeta)
-            assert param.group.check_point(sig.Zeta1)
-            assert (0 <= sig.rho < param.q)
-            assert (0 <= sig.w < param.q)
-            assert (0 <= sig.delta1 < param.q)
-            assert (0 <= sig.delta2 < param.q)
-            assert (0 <= sig.sigma < param.q)
-            assert (0 <= sig.micro < param.q)
+        param: AbeParam = self.param
 
-        except Exception as e:
+        if not all((
+            param.group.check_point(sig.zeta),
+            param.group.check_point(sig.zeta1),
+            (0 <= sig.rho < param.q),
+            (0 <= sig.w < param.q),
+            (0 <= sig.delta1 < param.q),
+            (0 <= sig.delta2 < param.q),
+            (0 <= sig.sigma < param.q),
+            (0 <= sig.micro < param.q),
+            isinstance(sig.message, bytes),
+            not sig.zeta.is_infinite(),
+        )):
             return False
 
-        if not isinstance(sig.message, bytes):
-            return False
+        zeta2: EcPt = sig.zeta - sig.zeta1
+        h = sha256(
+            b'||'.join((
+                sig.zeta.export(),
+                sig.zeta1.export(),
+                (sig.rho * param.g + sig.w * self.pk).export(),
+                (sig.delta1 * param.g + sig.sigma * sig.zeta1).export(),
+                (sig.delta2 * param.h + sig.sigma * zeta2).export(),
+                (sig.micro * self.z + sig.sigma * sig.zeta).export(),
+                sig.message,
+            ))
+        ).digest()
 
-        if sig.Zeta.is_infinite():
-            return False
-
-        sig.Zeta2 = sig.Zeta - sig.Zeta1
-        h = sha256(b'||'.join(
-            [sig.Zeta.export(),
-            sig.Zeta1.export(),
-            (sig.rho * param.G + sig.w * self.PK).export(),
-            (sig.delta1 * param.G + sig.sigma * sig.Zeta1).export(),
-            (sig.delta2 * param.H + sig.sigma * sig.Zeta2).export(),
-            (sig.micro * self.Z + sig.sigma * sig.Zeta).export(),
-            sig.message]
-        )).digest()
-
-        lhs = (sig.w + sig.sigma) % param.q
-        rhs = Bn.from_binary(h) % param.q
+        lhs: Bn = (sig.w + sig.sigma) % param.q
+        rhs: Bn = Bn.from_binary(h) % param.q
 
         return lhs == rhs
 
 
-############### Signer ################
-class AbeSigner():
-    """A class which handles the signer role.
-    
-    Warning: This class can only sign one message at a time. 
-    In other words, It keeps state between commit and response, which does noy
-    work with concurrent comits. You can create multiple signers with the same
-    public key.
+class AbeSigner:
+    """Signer for Abe's blind signature scheme
+
+    **Warning:** When used for Anonymous credentials light (ACL), commitments can not be issued in
+    parallel. Instead, the signer and the user have to issue commitment and respond back a blinded
+    challenge sequentially. Therefore the signer can not issue a new commitment until the user
+    responded to the previous commitment.
+
+    By default the signer will ensure it can not issue a commitment until the previous one was
+    responded correctly, and these checks are thread safe. Optionally, you can disable the thread
+    safety meachanism if you prefer to implement it at a higher level, or completely disable the
+    safety checks if you do not intent to use the signer for ACL.
+
+    :param private: signer's private key
+    :param public: signer's public key
+    :param disable_acl: disable check to ensure ACL validity
+    :param thread_safe: ensure the signer is thread safe (parameter ignored when ACL usage is
+        disabled)
     """
 
-    def __init__(self, private, public):
-        """Creates a new AbeSigner.
+    __slots__ = ("param", "public", "private", "enable_acl", "state", "lock")
 
-        Args:
-            private (AbePrivateKey): signer's private key
-            public (AbePublicKey): signer's public key
-        """
-        self.param = public.param
-        self.public = public
-        self.private = private
+    def __init__(
+            self,
+            private: AbePrivateKey,
+            public: AbePublicKey,
+            disable_acl: bool = False,
+            thread_safe: bool = True
+        ) -> None:
+        self.param: AbeParam = public.param
+        self.public: AbePublicKey = public
+        self.private: AbePrivateKey = private
+        self.enable_acl: bool = not disable_acl
+        self.state: AbeSignerState = AbeSignerState.READY_TO_COMMIT
+        self.lock: Lock = Lock() if self.enable_acl and thread_safe else None
 
-    def _compute_z1(self, rnd):
-        return self.param.group.hash_to_point(b"z1_" + rnd.binary())
 
-    def commit(self):
+    def commit(self) -> Tuple[SignerCommitMessage, SignerCommitmentInternalParameters]:
         """Initiate the signing protocol.
 
-        Returns:
-            (SignerCommitMessage)
+        :raises AbeSignerStateInvalid: The signer attempted to issue a new commitment before
+            receiving a blinded challenge for the previous one.
+        :return: a tuple containing a commitment message and the commitment's internal parameters
+            that will be necessary to process the user's blinded challenge to this commitment
         """
-        self.rnd = self.param.q.random()
-        self.Z1 = self._compute_z1(self.rnd)
-        self.Z2 = self.public.Z - self.Z1
+        group = self.param.group
+        return self._commit(lambda rnd, group=group: group.hash_to_point(b"z1_" + rnd.binary()))
 
-        self.u, self.s1, self.s2, self.d = (
-            self.param.q.random() for __ in range(4)
+
+    def _commit(
+            self,
+            compute_z1: Callable[[Bn], EcPt]
+        ) -> Tuple[SignerCommitMessage, SignerCommitmentInternalParameters]:
+
+        if self.enable_acl:
+            if self.lock is not None:
+                self.lock.acquire()
+            if self.state != AbeSignerState.READY_TO_COMMIT:
+                raise AbeSignerStateInvalid(
+                    "Can not make a new commitment until a blinded challenge is received for the "
+                    "previous one."
+                )
+
+        rnd: Bn = self.param.q.random()
+        z1: EcPt = compute_z1(rnd)
+        z2: EcPt = self.public.z - z1
+
+        rnd_params = SignerCommitmentInternalParameters.new(self.param.q)
+
+        a: EcPt = rnd_params.u * self.param.g
+        b1: EcPt = rnd_params.s1 * self.param.g + rnd_params.d * z1
+        b2: EcPt = rnd_params.s2 * self.param.h + rnd_params.d * z2
+
+        if self.enable_acl:
+            self.state = AbeSignerState.COMMITTED
+            if self.lock is not None:
+                self.lock.release()
+
+        return (
+            SignerCommitMessage(rnd, a, b1, b2),
+            rnd_params,
         )
-        self.A = self.u * self.param.G
-        self.B1 = self.s1 * self.param.G + self.d * self.Z1
-        self.B2 = self.s2 * self.param.H + self.d * self.Z2
 
-        return SignerCommitMessage(self.rnd, self.A, self.B1, self.B2)
 
-    def respond(self, e):
+    def respond(
+            self,
+            challenge: BlindedChallengeMessage,
+            commit_internal: SignerCommitmentInternalParameters
+        ) -> SignerResponseMessage:
         """Compute the response for the user's challenge.
 
-        Args:
-            e (Bn): The user's blinded challenge 
-        Returns:
-            (SignerRespondMessage)
+        :param challenge: the user's blinded challenge
+        :param internal_params: internal parameters of the commitment to which the user responded
+            with this blinded challenge
+        :raises AbeSignerStateInvalid: The signer attempted to respond to a blinded challenge
+            before issuing a commitment.
+        :return: response to the blinded message
         """
-        c = (e - self.d) % self.param.q
-        r = (self.u - c * self.private.sk) % self.param.q
+        if self.enable_acl:
+            if self.lock is not None:
+                self.lock.acquire()
+            if self.state != AbeSignerState.COMMITTED:
+                raise AbeSignerStateInvalid(
+                    "Attempt to respond to a commitment which has not been issued."
+                )
 
-        return SignerRespondMessage(r, c, self.s1, self.s2, self.d)
+        c: Bn = (challenge.e - commit_internal.d) % self.param.q
+        r: Bn = (commit_internal.u - c * self.private.sk) % self.param.q
+
+        if self.enable_acl:
+            self.state = AbeSignerState.READY_TO_COMMIT
+            if self.lock is not None:
+                self.lock.release()
+
+        return SignerResponseMessage(
+            r,
+            c,
+            commit_internal.s1,
+            commit_internal.s2,
+            commit_internal.d
+        )
 
 
-class AbeUser():
+class AbeUser:
+    """User for Abe's blind signature scheme.
 
-    def __init__(self, public, verify_pk=False):
-        """Creates a new user.
+    :param public: signer's public key
+    :param verify_pk: verify the signer's public key
+    :raises AbePublicKeyInvalid: The public key is invalid
+    """
 
-        Attributes:
-            public (AbePublicKey): signer's public key
-        """
-        self.param = public.param
-        self.public = public
+    __slots__ = ("param", "public")
+
+    def __init__(self, public: AbePublicKey, verify_pk: bool = False):
+        self.param: AbeParam = public.param
+        self.public: AbePublicKey = public
         if verify_pk and not self.public.verify_parameters():
-            raise Exception("Invalid public key")
+            raise AbePublicKeyInvalid()
 
-    # duplicate of Abe.Signer.compute_z1
-    def _compute_z1(self, rnd):
-        return self.param.group.hash_to_point(b"z1_" + rnd.binary())
 
-    def compute_blind_challenge(self, commit_message, m):
-        """Receive a SignerCommitMessage from the signer and start the procedure
-        of getting a signature on message m from the signer.
+    def compute_blind_challenge(
+            self,
+            commit_message: SignerCommitMessage,
+            message: Union[bytes, str]
+        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalParameters]:
+        """Compute a blind challenge with a commitment from teh signer and a message to sign.
 
-        Args:
-            commit_message (SignerCommitMessage):response from AbeSigner.commit()
-            m (bytes): message to sign.
-                If m is a string, then the procedure encodes it as 'utf8'
+        :param commit_message: commitment from the signer
+        :param message: a message to sign
+        :raises ValueError: The commitment or the message to sign is invalid.
+        :return: a tuple containing a blind challenge to respond back to the signer and the blind
+            challenge's internal parameters that will be necessary to process the signer's response
+            to this blind challenge
         """
-        self.rnd = commit_message.rnd
-        self.Z1 = self._compute_z1(self.rnd)
-        self.Z2 = self.public.Z - self.Z1
-        self.A, self.B1, self.B2 = (
-            commit_message.A,
-            commit_message.B1,
-            commit_message.B2,
+        group = self.param.group
+        return self._compute_blind_challenge(
+            commit_message,
+            message,
+            lambda rnd, group=group: group.hash_to_point(b"z1_" + rnd.binary())
         )
 
-        if isinstance(m, str):
-            m = m.encode('utf8')
-        if not isinstance(m, bytes):
-            raise Exception("Bad encoding in message")
-        self.message = m
 
-        assert self.param.group.check_point(self.A)
-        assert self.param.group.check_point(self.B1)
-        assert self.param.group.check_point(self.B2)
+    def _compute_blind_challenge(
+            self,
+            commit_message: SignerCommitMessage,
+            message: Union[bytes, str],
+            compute_z1: Callable[[Bn], EcPt]
+        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalParameters]:
+        if isinstance(message, str):
+            message = message.encode('utf8')
+        if not isinstance(message, bytes):
+            raise ValueError("Invalid message, 'message' is not bytes")
 
-        self.blinder = self.param.q.random()
-        self.tau = self.param.q.random()
-        self.Eta = self.tau * self.public.Z
+        rnd: Bn = commit_message.rnd
+        z1: EcPt = compute_z1(rnd)
 
-        self.Zeta = self.blinder * self.public.Z
-        self.Zeta1 = self.blinder * self.Z1
-        self.Zeta2 = self.Zeta - self.Zeta1
-
-        self.t = [self.param.q.random() for __ in range(5)]
-
-        self.Alpha = self.A + self.t[0] * self.param.G + self.t[1] * self.public.PK
-        self.Beta1 = (
-            self.blinder * self.B1 + self.t[2] * self.param.G + self.t[3] * self.Zeta1
-        )
-        self.Beta2 = (
-            self.blinder * self.B2 + self.t[4] * self.param.H + self.t[3] * self.Zeta2
+        a: EcPt
+        b1: EcPt
+        b2: EcPt
+        a, b1, b2 = (
+            commit_message.a,
+            commit_message.b1,
+            commit_message.b2,
         )
 
-        h = sha256(b'||'.join(
-            [self.Zeta.export(),
-            self.Zeta1.export(),
-            self.Alpha.export(),
-            self.Beta1.export(),
-            self.Beta2.export(),
-            self.Eta.export(),
-            self.message]
+        if not self.param.group.check_point(a):
+            raise ValueError("Invalid point A")
+        if not self.param.group.check_point(b1):
+            raise ValueError("Invalid point B1")
+        if not self.param.group.check_point(b2):
+            raise ValueError("Invalid point B2")
+
+        blinder: Bn = self.param.q.random()
+        tau: Bn = self.param.q.random()
+        t: List[Bn] = [self.param.q.random() for _ in range(5)]
+        zeta: EcPt = blinder * self.public.z
+        zeta1: EcPt = blinder * z1
+
+        eta: EcPt = tau * self.public.z
+        zeta2: EcPt = zeta - zeta1
+
+        alpha: EcPt = a + t[0] * self.param.g + t[1] * self.public.pk
+        beta1: EcPt = blinder * b1 + t[2] * self.param.g + t[3] * zeta1
+        beta2: EcPt = blinder * b2 + t[4] * self.param.h + t[3] * zeta2
+
+        h: bytes = sha256(b'||'.join(
+            (
+                zeta.export(),
+                zeta1.export(),
+                alpha.export(),
+                beta1.export(),
+                beta2.export(),
+                eta.export(),
+                message
+            )
         )).digest()
-        self.epsilon = Bn.from_binary(h) % self.param.q
 
-        self.e = (self.epsilon - self.t[1] - self.t[3]) % self.param.q
-        return self.e
+        epsilon: Bn = Bn.from_binary(h) % self.param.q
 
-    def compute_signature(self, response):
-        """Finish the blind signing's sigma protocol and form a signature
-
-        Args:
-            response (SignerRespondMessage): output of AbeSigner.respond
-        Returns:
-            AbeSignature: a signature which can be verified agains the signer's
-            public key
-        """
-        self.rho = (response.r + self.t[0]) % self.param.q
-        self.w = (response.c + self.t[1]) % self.param.q
-        self.delta1 = (self.blinder * response.s1 + self.t[2]) % self.param.q
-        self.delta2 = (self.blinder * response.s2 + self.t[4]) % self.param.q
-        self.sigma = (response.d + self.t[3]) % self.param.q
-        self.micro = (self.tau - self.sigma * self.blinder) % self.param.q
-        sig = AbeSignature(
-            self.message,
-            self.Zeta,
-            self.Zeta1,
-            self.rho,
-            self.w,
-            self.delta1,
-            self.delta2,
-            self.sigma,
-            self.micro,
+        e: Bn = (epsilon - t[1] - t[3]) % self.param.q
+        return (
+            BlindedChallengeMessage(e),
+            UserBlindedChallengeInternalParameters(blinder, tau, t, zeta, zeta1, message)
         )
-        return sig
+
+
+    def compute_signature(
+            self,
+            response: SignerResponseMessage,
+            challenge_internal: UserBlindedChallengeInternalParameters
+        ) -> AbeSignature:
+        """Finish the blind signing's sigma protocol and compute a signature
+
+        :param response: signer's response to the blind challenge
+        :param challenge_private: internal parameters of the blind challenge to which the signer
+            responded.
+        :return: a signature which can be verified agains the signer's public key
+        """
+        rho: Bn = (response.r + challenge_internal.t[0]) % self.param.q
+        w: Bn = (response.c + challenge_internal.t[1]) % self.param.q
+        delta1: Bn = (challenge_internal.blinder * response.s1 + challenge_internal.t[2]) % self.param.q
+        delta2: Bn = (challenge_internal.blinder * response.s2 + challenge_internal.t[4]) % self.param.q
+        sigma: Bn = (response.d + challenge_internal.t[3]) % self.param.q
+        micro: Bn = (challenge_internal.tau - sigma * challenge_internal.blinder) % self.param.q
+
+        return AbeSignature(
+            challenge_internal.message,
+            challenge_internal.zeta,
+            challenge_internal.zeta1,
+            rho,
+            w,
+            delta1,
+            delta2,
+            sigma,
+            micro,
+        )
 
 
 def main():
