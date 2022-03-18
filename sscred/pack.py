@@ -174,8 +174,8 @@ def register_all_classes():
     add_msgpack_support(NIZK, COUNTER_BASE+21, add_cls_methods=False)
 
     # Added later
-    add_msgpack_support_slots(blind_signature.SignerCommitmentInternalParameters, COUNTER_BASE+22)
-    add_msgpack_support_slots(blind_signature.UserBlindedChallengeInternalParameters, COUNTER_BASE+23)
+    add_msgpack_support_slots(blind_signature.SignerCommitmentInternalState, COUNTER_BASE+22)
+    add_msgpack_support_slots(blind_signature.UserBlindedChallengeInternalState, COUNTER_BASE+23)
     add_msgpack_support_slots(blind_signature.BlindedChallengeMessage, COUNTER_BASE+24)
 
 register_all_classes()

@@ -26,6 +26,8 @@ A guide to ACL:
 
 Steps 2 and 3 can be combined together.
 
+Warning: Running concurrent ACL signing sessions is insecure.
+
 How to use:
     >>> # generating keys and wrappers
     >>> issuer_priv, issuer_pk = ACLParam().generate_new_key_pair()
@@ -68,9 +70,9 @@ from .blind_signature import (
     AbeUser,
     BlindedChallengeMessage,
     SignerCommitMessage,
-    SignerCommitmentInternalParameters,
+    SignerCommitmentInternalState,
     SignerResponseMessage,
-    UserBlindedChallengeInternalParameters,
+    UserBlindedChallengeInternalState,
 )
 from .config import DEFAULT_GROUP_ID
 
@@ -168,7 +170,7 @@ class ACLIssuer(AbeSigner):
     def commit(
             self,
             prove_attr_msg: ProveAttrKnowledgeMessage
-        ) -> Tuple[SignerCommitMessage, SignerCommitmentInternalParameters]:
+        ) -> Tuple[SignerCommitMessage, SignerCommitmentInternalState]:
         """Checks the attribute proof and perform AbeSignature's commit phase.
 
         Errors:
@@ -216,7 +218,7 @@ class ACLUser(AbeUser):
             self,
             commit_message: SignerCommitMessage,
             message: Union[bytes, str]
-        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalParameters]:
+        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalState]:
         """Receive a SignerCommitMessage from the signer and start the procedure
         of getting a signature on message m from the signer.
 
@@ -257,7 +259,7 @@ class ACLUser(AbeUser):
     def compute_credential(
             self,
             response: SignerResponseMessage,
-            challenge_private: UserBlindedChallengeInternalParameters
+            challenge_state: UserBlindedChallengeInternalState
         ) -> ACLCredentialPrivate:
         """Finish the protocol and form a private credential.
 
@@ -269,10 +271,10 @@ class ACLUser(AbeUser):
                 cred_private.show_credential() creates a one time use credential
                 with the private information.
         """
-        sig = self.compute_signature(response, challenge_private)
+        sig = self.compute_signature(response, challenge_state)
         bcommit, bpriv = self.public.bc_param.blind_commit(
             raw_values=self.attributes,
-            blindness_rand=challenge_private.blinder,
+            blindness_rand=challenge_state.blinder,
             h_rand=self.prand.rand
         )
         cred_private = ACLCredentialPrivate(

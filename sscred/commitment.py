@@ -68,8 +68,7 @@ class PedersenParameters:
             return
 
         for i in range(len(self.HS), hs_size):
-            suffix = i.to_bytes((i.bit_length() + 7) >> 3, 'big')
-            self.HS.append(self.group.hash_to_point(b"com_h" + suffix))
+            self.HS.append(self.group.hash_to_point(f'com_h{i}'.encode("utf8")))
 
 
     def verify_parameters(self, valid_parameters: Optional[PedersenParameters] = None):
