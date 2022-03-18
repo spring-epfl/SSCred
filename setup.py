@@ -10,6 +10,7 @@ from sscred import *
 PACKAGE_NAME = "sscred"
 INSTALL_REQUIRES = [
     "petlib",
+    "attrs",
     "zksk"
 ]
 SETUP_REQUIRES = ["pytest-runner"]

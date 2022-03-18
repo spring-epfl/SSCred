@@ -110,14 +110,14 @@ class SignerCommitMessage:
 
 
 @attr.s(slots=True)
-class SignerCommitmentInternalParameters:
+class SignerCommitmentInternalState:
     u = attr.ib()  # type: Bn
     s1 = attr.ib() # type: Bn
     s2 = attr.ib() # type: Bn
     d = attr.ib()  # type: Bn
 
     @classmethod
-    def new(cls, q: Bn) -> SignerCommitmentInternalParameters:
+    def new(cls, q: Bn) -> SignerCommitmentInternalState:
         """Generate a new set of random internal parameters."""
         return cls(*(q.random() for _ in range(4)))
 
@@ -128,7 +128,7 @@ class BlindedChallengeMessage:
 
 
 @attr.s(slots=True)
-class UserBlindedChallengeInternalParameters:
+class UserBlindedChallengeInternalState:
     blinder = attr.ib() # type: Bn
     tau = attr.ib()     # type: Bn
     t = attr.ib()       # type: List[Bn]
@@ -272,7 +272,7 @@ class AbeSigner:
         self.lock: Lock = Lock() if self.enable_acl and thread_safe else None
 
 
-    def commit(self) -> Tuple[SignerCommitMessage, SignerCommitmentInternalParameters]:
+    def commit(self) -> Tuple[SignerCommitMessage, SignerCommitmentInternalState]:
         """Initiate the signing protocol.
 
         :raises AbeSignerStateInvalid: The signer attempted to issue a new commitment before
@@ -287,7 +287,7 @@ class AbeSigner:
     def _commit(
             self,
             compute_z1: Callable[[Bn], EcPt]
-        ) -> Tuple[SignerCommitMessage, SignerCommitmentInternalParameters]:
+        ) -> Tuple[SignerCommitMessage, SignerCommitmentInternalState]:
 
         if self.enable_acl:
             if self.lock is not None:
@@ -302,7 +302,7 @@ class AbeSigner:
         z1: EcPt = compute_z1(rnd)
         z2: EcPt = self.public.z - z1
 
-        rnd_params = SignerCommitmentInternalParameters.new(self.param.q)
+        rnd_params = SignerCommitmentInternalState.new(self.param.q)
 
         a: EcPt = rnd_params.u * self.param.g
         b1: EcPt = rnd_params.s1 * self.param.g + rnd_params.d * z1
@@ -322,7 +322,7 @@ class AbeSigner:
     def respond(
             self,
             challenge: BlindedChallengeMessage,
-            commit_internal: SignerCommitmentInternalParameters
+            commit_state: SignerCommitmentInternalState
         ) -> SignerResponseMessage:
         """Compute the response for the user's challenge.
 
@@ -341,8 +341,8 @@ class AbeSigner:
                     "Attempt to respond to a commitment which has not been issued."
                 )
 
-        c: Bn = (challenge.e - commit_internal.d) % self.param.q
-        r: Bn = (commit_internal.u - c * self.private.sk) % self.param.q
+        c: Bn = (challenge.e - commit_state.d) % self.param.q
+        r: Bn = (commit_state.u - c * self.private.sk) % self.param.q
 
         if self.enable_acl:
             self.state = AbeSignerState.READY_TO_COMMIT
@@ -352,9 +352,9 @@ class AbeSigner:
         return SignerResponseMessage(
             r,
             c,
-            commit_internal.s1,
-            commit_internal.s2,
-            commit_internal.d
+            commit_state.s1,
+            commit_state.s2,
+            commit_state.d
         )
 
 
@@ -379,7 +379,7 @@ class AbeUser:
             self,
             commit_message: SignerCommitMessage,
             message: Union[bytes, str]
-        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalParameters]:
+        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalState]:
         """Compute a blind challenge with a commitment from teh signer and a message to sign.
 
         :param commit_message: commitment from the signer
@@ -402,7 +402,7 @@ class AbeUser:
             commit_message: SignerCommitMessage,
             message: Union[bytes, str],
             compute_z1: Callable[[Bn], EcPt]
-        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalParameters]:
+        ) -> Tuple[BlindedChallengeMessage, UserBlindedChallengeInternalState]:
         if isinstance(message, str):
             message = message.encode('utf8')
         if not isinstance(message, bytes):
@@ -457,14 +457,14 @@ class AbeUser:
         e: Bn = (epsilon - t[1] - t[3]) % self.param.q
         return (
             BlindedChallengeMessage(e),
-            UserBlindedChallengeInternalParameters(blinder, tau, t, zeta, zeta1, message)
+            UserBlindedChallengeInternalState(blinder, tau, t, zeta, zeta1, message)
         )
 
 
     def compute_signature(
             self,
             response: SignerResponseMessage,
-            challenge_internal: UserBlindedChallengeInternalParameters
+            challenge_state: UserBlindedChallengeInternalState
         ) -> AbeSignature:
         """Finish the blind signing's sigma protocol and compute a signature
 
@@ -473,17 +473,17 @@ class AbeUser:
             responded.
         :return: a signature which can be verified agains the signer's public key
         """
-        rho: Bn = (response.r + challenge_internal.t[0]) % self.param.q
-        w: Bn = (response.c + challenge_internal.t[1]) % self.param.q
-        delta1: Bn = (challenge_internal.blinder * response.s1 + challenge_internal.t[2]) % self.param.q
-        delta2: Bn = (challenge_internal.blinder * response.s2 + challenge_internal.t[4]) % self.param.q
-        sigma: Bn = (response.d + challenge_internal.t[3]) % self.param.q
-        micro: Bn = (challenge_internal.tau - sigma * challenge_internal.blinder) % self.param.q
+        rho: Bn = (response.r + challenge_state.t[0]) % self.param.q
+        w: Bn = (response.c + challenge_state.t[1]) % self.param.q
+        delta1: Bn = (challenge_state.blinder * response.s1 + challenge_state.t[2]) % self.param.q
+        delta2: Bn = (challenge_state.blinder * response.s2 + challenge_state.t[4]) % self.param.q
+        sigma: Bn = (response.d + challenge_state.t[3]) % self.param.q
+        micro: Bn = (challenge_state.tau - sigma * challenge_state.blinder) % self.param.q
 
         return AbeSignature(
-            challenge_internal.message,
-            challenge_internal.zeta,
-            challenge_internal.zeta1,
+            challenge_state.message,
+            challenge_state.zeta,
+            challenge_state.zeta1,
             rho,
             w,
             delta1,

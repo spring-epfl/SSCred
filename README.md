@@ -50,6 +50,8 @@ At a later time, users can show the credential to a verifier to authorize their 
 
 Attributes can be either `int`, `petlib.Bn`, `str`, or `bytes`. The library hashes attributes for internal use but keeps a copy of raw attribute values as private variables. The user can embed a public key in attributes to be able to sign with the credential after receiving it.
 
+*Warning*: There is a new attack <sup>[2](#cn2)</sup> that breaks the ROS security assumption. This means that running concurrent ACL signing sessions is insecure.
+
   How to use:
 ```python
 >>> # generating keys and wrappers
@@ -61,10 +63,10 @@ Attributes can be either `int`, `petlib.Bn`, `str`, or `bytes`. The library hash
 >>> # Issuance
 >>> attributes = [Bn(13), "Hello", "WoRlD", "Hidden"]
 >>> attr_proof = user.prove_attr_knowledge(attributes)
->>> com, com_internal = issuer.commit(attr_proof)
->>> challenge, challenge_internal = user.compute_blind_challenge(com, message)
->>> resp = issuer.respond(challenge, com_internal)
->>> cred_private = user.compute_credential(resp, challenge_internal)
+>>> com, issuer_state = issuer.commit(attr_proof)
+>>> challenge, user_state = user.compute_blind_challenge(com, message)
+>>> resp = issuer.respond(challenge, issuer_state)
+>>> cred_private = user.compute_credential(resp, user_state)
 
 >>> # show credential
 >>> # Reveal attributes 0, 1, and 2.
@@ -77,7 +79,9 @@ b'Hello world'
 ```
 
 ### Abe's blind signature
-The user decides on a message and engages in an interactive protocol with the signer to compute a signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows the signer's public key. No one, including the signer, can determine the user's identity when he reveals his signature. This blind signature is similar to an ACL credential with an empty attribute list. This signature is based on Abe's blind signature<sup>[2](#cn2)</sup>.
+The user decides on a message and engages in an interactive protocol with the signer to compute a signature on the message. This protocol prevents the signer from learning the content of the message. The signature is verifiable by anyone who knows the signer's public key. No one, including the signer, can determine the user's identity when he reveals his signature. This blind signature is similar to an ACL credential with an empty attribute list. This signature is based on Abe's blind signature<sup>[3](#cn3)</sup>.
+
+*Note*: The ROS attack <sup>[2](#cn2)</sup> does **not** impact the security of Abe's signature.
 
   How to use:
 ```python
@@ -88,10 +92,10 @@ The user decides on a message and engages in an interactive protocol with the si
 >>> message = "Hello world"
 
 >>> # Interactive signing
->>> com, com_internal = signer.commit()
->>> challenge, challenge_internal = user.compute_blind_challenge(com, message)
->>> resp = signer.respond(challenge, com_internal)
->>> sig = user.compute_signature(resp, challenge_internal)
+>>> com, signer_state = signer.commit()
+>>> challenge, user_state = user.compute_blind_challenge(com, message)
+>>> resp = signer.respond(challenge, signer_state)
+>>> sig = user.compute_signature(resp, user_state)
 
 >>> # Verifying the signature
 >>> assert pk.verify_signature(sig)
@@ -149,4 +153,6 @@ The communication cost shows the transfer cost of the issuance protocol, and the
 ## Reference
 <a id="cn1">1</a>: Baldimtsi, F., & Lysyanskaya, A. (2013). Anonymous credentials light, 1087–1098. https://doi.org/10.1145/2508859.2516687
 
-<a id="cn2">2</a>: Abe, M. A Secure Three-move Blind Signature Scheme for Polynomially Many Signatures.
+<a id="cn2">2</a>: Benhamouda F, Lepoint T, Loss J, Orrù M, Raykova M. On the (in) security of ROS. EuroCrypt 2021
+
+<a id="cn3">3</a>: Abe, M. A Secure Three-move Blind Signature Scheme for Polynomially Many Signatures.
