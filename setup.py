@@ -4,12 +4,9 @@ import re
 
 from setuptools import setup
 
-from sscred import *
-
-
 PACKAGE_NAME = "sscred"
 INSTALL_REQUIRES = [
-    "petlib",
+    "petlib @ git+https://github.com/spring-epfl/petlib.git",
     "attrs",
     "zksk"
 ]
@@ -33,16 +30,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 
 setup(
-    name=__title__,
-    version=__version__,
-    description=__description__,
-    long_description=long_description,
-    long_description_content_type='text/markdown',
-    author=__author__,
-    author_email=__email__,
     packages=[PACKAGE_NAME],
-    license=__license__,
-    url=__url__,
     install_requires=INSTALL_REQUIRES,
     setup_requires=SETUP_REQUIRES,
     tests_require=TEST_REQUIRES,
