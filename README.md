@@ -19,6 +19,29 @@ sudo apt-get install libffi-dev
 
 ## Installing
 
+### With poetry
+
+Install system dependencies once and for all::
+
+```
+make install_dependencies
+```
+
+To develop, `install Poetry <https://python-poetry.org/docs/#installation>`\_ then just run::
+
+```
+make install
+make tests
+```
+
+To run the server:
+
+```
+    make run
+```
+
+### With pip
+
 You can use `pip` to install the library.
 
 ```
