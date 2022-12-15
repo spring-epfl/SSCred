@@ -11,12 +11,7 @@ Check example.py for examples
 import msgpack
 import petlib.pack
 
-from zksk import Secret
-from zksk.base import NIZK
 
-from . import acl
-from . import commitment
-from . import blind_pedersen
 from . import blind_signature
 
 COUNTER_BASE = 20
@@ -146,15 +141,6 @@ def add_msgpack_support(cls, ext, add_cls_methods=True):
 
 
 def register_all_classes():
-    # commitment
-    add_msgpack_support(commitment.PedersenParameters, COUNTER_BASE+1)
-    add_msgpack_support(commitment.PedersenProof, COUNTER_BASE+2)
-    add_msgpack_support(commitment.PedersenCommitment, COUNTER_BASE+3)
-    # blind commitment
-    add_msgpack_support(blind_pedersen.BlPedersenPrivate, COUNTER_BASE+4)
-    add_msgpack_support(blind_pedersen.BlPedersenProof, COUNTER_BASE+5)
-    add_msgpack_support(blind_pedersen.BlindedPedersenParam, COUNTER_BASE+6)
-    add_msgpack_support(blind_pedersen.BlPedersenCommitment, COUNTER_BASE+7)
     # Abe's signature
     add_msgpack_support_slots(blind_signature.AbeParam, COUNTER_BASE+8)
     add_msgpack_support_slots(blind_signature.AbePublicKey, COUNTER_BASE+9)
@@ -162,16 +148,6 @@ def register_all_classes():
     add_msgpack_support_slots(blind_signature.AbeSignature, COUNTER_BASE+11)
     add_msgpack_support_slots(blind_signature.SignerCommitMessage, COUNTER_BASE+12)
     add_msgpack_support_slots(blind_signature.SignerResponseMessage, COUNTER_BASE+13)
-    # ACL
-    add_msgpack_support_slots(acl.ACLParam, COUNTER_BASE+14)
-    add_msgpack_support_slots(acl.ACLIssuerPrivateKey, COUNTER_BASE+15)
-    add_msgpack_support_slots(acl.ACLIssuerPublicKey, COUNTER_BASE+16)
-    add_msgpack_support_slots(acl.ProveAttrKnowledgeMessage, COUNTER_BASE+17)
-    add_msgpack_support_slots(acl.ACLCredential, COUNTER_BASE+18)
-    add_msgpack_support_slots(acl.ACLCredentialPrivate, COUNTER_BASE+19)
-    # zksk
-    add_msgpack_support(Secret, COUNTER_BASE+20, add_cls_methods=False)
-    add_msgpack_support(NIZK, COUNTER_BASE+21, add_cls_methods=False)
 
     # Added later
     add_msgpack_support_slots(blind_signature.SignerCommitmentInternalState, COUNTER_BASE+22)

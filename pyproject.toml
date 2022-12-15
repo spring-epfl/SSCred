@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "SSCred without ACL and Commitment"
+version = "0.3.0"
+description = "SSCred without ACL and Commitment"
+authors = ["Kasra EdalatNejad <kasra.edalat@epfl.ch>"]
+maintainers = [
+    "ICIJ <engineering@icij.org>"
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Security :: Cryptography",
+    "License :: OSI Approved :: BSD License"
+]
+license = "BSD 3-Clause"
+readme = "README.md"
+packages = [{include = "sscred"}] 
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+petlib = {git = "https://github.com/spring-epfl/petlib.git"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
