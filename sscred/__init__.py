@@ -7,9 +7,6 @@ __license__ = "BSD-3-Clause"
 __description__ = "Single Show Credentials: A Python library for anonymous authentication."
 __copyright__ = "2020, Kasra Edalatnejad  (SPRING Lab, EPFL)"
 
-from sscred.commitment import *
-from sscred.acl import *
 from sscred.pack import *
-from sscred.blind_pedersen import *
 from sscred.blind_signature import *
 

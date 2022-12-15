@@ -3,3 +3,4 @@ env/
 *.eggs
 *.egg-info
 .pytest_cache
+dist
